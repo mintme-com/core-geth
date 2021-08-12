@@ -474,12 +474,17 @@ func getEraUncleBlockReward(minerReward *big.Int) *big.Int {
 // accumulateRewards credits the coinbase of the given block with the mining
 // reward. The coinbase of each uncle block is also rewarded.
 func accumulateRewards(config ctypes.ChainConfigurator, state *state.StateDB, header *types.Header, uncles []*types.Header) {
-	eraLen := big.NewInt(100000)
-	era := GetBlockEra(header.Number, eraLen)
-	era = era.Add(era, big.NewInt(72))
+	minerReward := 100000000000000000
+	uncleReward := 20000000000000000
+	blknum := header.Number
+	if blknum < 500000 {
+		eraLen := big.NewInt(100000)
+		era := GetBlockEra(blknum, eraLen)
+		era = era.Add(era, big.NewInt(72))
 
-	minerReward := GetBlockWinnerRewardByEra(era)
-	uncleReward := getEraUncleBlockReward(minerReward)
+		minerReward = GetBlockWinnerRewardByEra(era)
+		uncleReward = getEraUncleBlockReward(minerReward)
+	}
 	for _, uncle := range uncles {
 		state.AddBalance(uncle.Coinbase, uncleReward)
 	}
