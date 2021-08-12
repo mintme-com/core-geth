@@ -477,7 +477,7 @@ func accumulateRewards(config ctypes.ChainConfigurator, state *state.StateDB, he
 	minerReward := big.NewInt(100000000000000000)
 	uncleReward := big.NewInt(20000000000000000)
 	blknum := header.Number
-	if blknum.Cmp(big.NewInt(500000)) == 1 {
+	if blknum.Cmp(big.NewInt(500000)) != 1 {
 		eraLen := big.NewInt(100000)
 		era := GetBlockEra(blknum, eraLen)
 		era = era.Add(era, big.NewInt(72))
