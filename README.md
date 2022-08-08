@@ -56,31 +56,140 @@ Ellaism users are asked to switch to
 - Further [ethereum/go-ethereum](https://github.com/ethereum/go-ethereum) documentation about can be found [here](https://geth.ethereum.org/docs/).
 - Documentation about documentation lives [here](./docs/developers/documentation.md).
 
-## Contribution
+## Mining
 
-Thank you for considering to help out with the source code! We welcome contributions
-from anyone on the internet, and are grateful for even the smallest of fixes!
+Mining is the process through which new blocks are created. Geth actually creates new blocks all the time, but these blocks need to be secured through proof-of-work so they will be accepted by other nodes. Mining is all about creating these proof-of-work values.
 
-If you'd like to contribute to core-geth, please fork, fix, commit and send a pull request
-for the maintainers to review and merge into the main code base. If you wish to submit
-more complex changes though, please check up with the core devs first on [our gitter channel](https://gitter.im/etclabscore/core-geth)
-to ensure those changes are in line with the general philosophy of the project and/or get
-some early feedback which can make both your efforts much lighter as well as our review
-and merge procedures quick and simple.
+Always ensure your blockchain is fully synchronised with the chain before starting to mine, otherwise you will not be mining on the correct chain and your block rewards will not be valueable.
 
-Please make sure your contributions adhere to our coding guidelines:
+## Solo mining
 
- * Code must adhere to the official Go [formatting](https://golang.org/doc/effective_go.html#formatting)
-   guidelines (i.e. uses [gofmt](https://golang.org/cmd/gofmt/)).
- * Code must be documented adhering to the official Go [commentary](https://golang.org/doc/effective_go.html#commentary)
-   guidelines.
- * Pull requests need to be based on and opened against the `master` branch.
- * Commit messages should be prefixed with the package(s) they modify.
-   * E.g. "eth, rpc: make trace configs optional"
+When you start up your mintme node with geth it is not mining by default. To start it in mining mode, you use the --mine command-line flag. The --miner.threads parameter can be used to set the number parallel mining threads (defaulting to the total number of processor cores).
 
-Please see the [Developers' Guide](https://github.com/ethereum/go-ethereum/wiki/Developers'-Guide)
-for more details on configuring your environment, managing project dependencies, and
-testing procedures.
+`geth --mintme --mine --miner.threads=4`
+
+You can also start and stop CPU mining at runtime using the console. miner.start takes an optional parameter for the number of miner threads.
+```
+> miner.start(8)
+true
+> miner.stop()
+true
+```
+
+Note that mining only makes sense if you are in sync with the network (since you mine on top of the consensus block). Therefore the mintme blockchain downloader/synchroniser will delay mining until syncing is complete, and after that mining automatically starts unless you cancel your intention with miner.stop().
+
+In order to earn mintme you must have your etherbase (or coinbase) address set. This etherbase defaults to your primary account. If you don’t have an etherbase address, then geth --mine will not start up.
+
+You can set your etherbase on the command line:
+
+`geth --mintme --miner.etherbase '0xC95767AC46EA2A9162F0734651d6cF17e5BfcF10' --mine 2>> geth.log`
+
+You can reset your etherbase on the console too:
+
+`> miner.setEtherbase(eth.accounts[2])`
+
+Note that your etherbase does not need to be an address of a local account, just an existing one.
+
+There is an option to add extra data (32 bytes only) to your mined blocks. By convention this is interpreted as a unicode string, so you can set your short vanity tag.
+
+`> miner.setExtra("ΞTHΞЯSPHΞЯΞ")`
+
+You can check your hashrate with miner.hashrate, the result is in H/s (Hash operations per second).
+
+```
+> eth.hashrate
+712000
+```
+
+After you successfully mined some blocks, you can check the balance of your etherbase account. Now assuming your etherbase is a local account:
+
+```
+> eth.getBalance(eth.coinbase).toNumber();
+'34698870000000'
+```
+
+You can check which blocks are mined by a particular miner (address) with the following code snippet on the console:
+```
+> function minedBlocks(lastn, addr) {
+    addrs = [];
+    if (!addr) {
+        addr = eth.coinbase
+    }
+    limit = eth.blockNumber - lastn
+    for (i = eth.blockNumber; i >= limit; i--) {
+        if (eth.getBlock(i).miner == addr) {
+            addrs.push(i)
+        }
+    }
+    return addrs
+}
+// scans the last 1000 blocks and returns the blocknumbers of blocks mined by your coinbase
+// (more precisely blocks the mining reward for which is sent to your coinbase).
+> minedBlocks(1000, eth.coinbase)
+[352708, 352655, 352559]
+```
+Note that it will happen often that you find a block yet it never makes it to the canonical chain. This means when you locally include your mined block, the current state will show the mining reward credited to your account, however, after a while, the better chain is discovered and we switch to a chain in which your block is not included and therefore no mining reward is credited. Therefore it is quite possible that as a miner monitoring their coinbase balance will find that it may fluctuate quite a bit.
+
+The logs show locally mined blocks confirmed after 5 blocks. At the moment you may find it easier and faster to generate the list of your mined blocks from these logs.
+
+## Pool mining
+
+We download miner binary for your system from here https://github.com/mintme-com/miner/releases
+
+Then unpack it and in dir of unpacked miner we see file config.json , which is our miner configuration file, which contains main mining setting, like wallet number, threads , max-cpu-usage , etc.
+
+The main thing we need to do is to set your wallet number where we will get reward to config.json
+
+So we put our wallet number created by mintme to "user" field of config.json, it shoud be set like this:
+
+"user": "0x918e173c8426593bd37d5bc7d03f17dcc154cd5b",
+
+Now we can save config.json , start mining and get rewards
+
+We ready to start miner, it done by command: ./webchain-miner (Linux) or webchain-miner.exe (Windows)
+
+Now we will see screen like that:
+
+`./webchain-miner`
+
+    VERSIONS: webchain-miner/2.6.2 libuv/1.20.3-dev gcc/6.3.0
+    CPU: Intel(R) Xeon(R) CPU D-1521 @ 2.40GHz (1) x64 AES-NI
+    CPU L2/L3: 1.0 MB/6.0 MB
+    THREADS: 5, cryptonight-webchain, av=1, donate=5%
+    POOL #1: pool2.webchain.network:2222
+    COMMANDS: hashrate, pause, resume [2018-05-10 16:54:36] use pool pool2.webchain.network:2222 212.32.255.73 [2018-05-10 16:54:36] new job from pool2.webchain.network:2222 diff 5000 algo cn-web/1 [2018-05-10 16:54:36] READY (CPU) threads 5(5) huge pages 0/5 0% memory 10.0 MB [2018-05-10 23:26:02] speed 2.5s/60s/15m 14.6 14.8 13.6 H/s max: 20.3 H/s [2018-05-10 23:26:23] accepted (1/0) diff 5000 (170 ms)
+
+Short description:
+
+Pool is service which devide block finding task from webchain network between all miners in pool and also divide reward based on miners hashrate
+
+Job is mining block finding task from network H/s is how much hashes in second your CPU can generate to find correct solution of block task accepted means your CPU found correct solution of task , send it to pool and it can be one of multiply correct block solution for what network will reward pool by 50 WEB, which will divide between miners based on their hasrate
+
+So all you need is to run miner and wait some time (maybe 5 min, maybe 1 hour) when your miner find accepted shares and pool will give some part of reward coins to your account.
+
+Step 4. Pool and payments
+
+Currently we have official pool - pool.webchain.network:3333
+
+So we start mining and then open https://www.mintme.com/pool/ in search string below "Your Stats & Payment History" we put our wallet number: `0x918e173c8426593bd37d5bc7d03f17dcc154cd5b`
+
+and after miner send his first accepted share we will see realtime stats on top of page
+
+First of all you will get coins in Immature Balance, it means you got coins from network, but they need confirmation. Pending Balance is your money already which wait pool payment schedule to pay to your wallet Total Paid: is how much money already sent from pool to your wallet Last Share Submitted means how much time ago your miner(s) submit accepted share to pool Workers Online means how much computers mine with the same wallet Hashrate (30m) and (3h) shows your common average from all your computers where you mining with this wallet number Blocks Found means how much block was found by your share solution Total payments means how much payment schedules was completed from pool with payment to your wallet Your round share is how much job of block solution your miner(s) do in comparison with all miners in pool
+
+So when you will see some amount in Total paid, you can go back to your mintme console and write command again:
+
+`web3.fromWei(eth.getBalance(eth.coinbase), "ether")`
+
+`5`
+
+You will see other amount then 5 but it will be different from 0
+
+If not, there can be some reason. First - your mintme not synchronizing with network. So you need some time to wait (maybe about 1 hour)
+
+Second - your local time is not correct Check please your OS for how to resync your clock (example `sudo ntpdate -s time.nist.gov`) because even 12 seconds too fast can lead to 0 peers.
+
+Also you can see your real time balance of coins at https://mintme.com/explorer/, enter you wallet number at the right top of page and you will how much coins you have for now
 
 ## License
 
