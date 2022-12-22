@@ -20,7 +20,6 @@ import (
 	"bytes"
 	"crypto/sha1"
 	"encoding/json"
-	"io/ioutil"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -103,7 +102,7 @@ func TestDifficultyTestConfigGen(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = ioutil.WriteFile(specPath, j, os.ModePerm)
+		err = os.WriteFile(specPath, j, os.ModePerm)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -131,7 +130,7 @@ func TestDifficultyTestConfigGen(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = ioutil.WriteFile(specPath, j, os.ModePerm)
+		err = os.WriteFile(specPath, j, os.ModePerm)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -157,7 +156,7 @@ func TestDifficultyGen(t *testing.T) {
 	}
 
 	// Truncate/touch output file.
-	err = ioutil.WriteFile(outNDJSONFile, []byte{}, os.ModePerm)
+	err = os.WriteFile(outNDJSONFile, []byte{}, os.ModePerm)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,7 +196,7 @@ func TestDifficultyGen(t *testing.T) {
 	}
 
 	mustSha1SumForFile := func(filePath string) []byte {
-		b, err := ioutil.ReadFile(filePath)
+		b, err := os.ReadFile(filePath)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -216,7 +215,6 @@ func TestDifficultyGen(t *testing.T) {
 		if err := dt.checkFailure(t, test.Run(cfg)); err != nil {
 			t.Fatalf("failed to run difficulty test, err=%v", err)
 		} else {
-
 			fileBasename, ok := mapForkNameChainspecFileDifficulty[key]
 			if !ok {
 				t.Fatalf("unmatched config name: %s", key)
@@ -286,7 +284,6 @@ func TestDifficultyGen(t *testing.T) {
 			}
 			mustAppendTestToFileNDJSON(t, newTest, outNDJSONFile)
 			t.Logf("OK [generated] %v", newTest)
-
 		}
 	})
 }

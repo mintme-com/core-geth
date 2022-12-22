@@ -27,7 +27,6 @@ import (
 	"fmt"
 	"html/template"
 	"io"
-	"io/ioutil"
 	"math"
 	"math/big"
 	"net/http"
@@ -71,6 +70,7 @@ var (
 	testnetFlag    = flag.Bool("chain.testnet", false, "Configure genesis and bootnodes for testnet chain defaults")
 	rinkebyFlag    = flag.Bool("chain.rinkeby", false, "Configure genesis and bootnodes for rinkeby chain defaults")
 	goerliFlag     = flag.Bool("chain.goerli", false, "Configure genesis and bootnodes for goerli chain defaults")
+	sepoliaFlag    = flag.Bool("chain.sepolia", false, "Configure genesis and bootnodes for sepolia chain defaults")
 
 	attachFlag    = flag.String("attach", "", "Attach to an IPC or WS endpoint")
 	attachChainID = flag.Int64("attach.chainid", 0, "Configure fallback chain id value for use in attach mode (used if target does not have value available yet).")
@@ -112,6 +112,7 @@ var chainFlags = []*bool{
 	testnetFlag,
 	rinkebyFlag,
 	goerliFlag,
+	sepoliaFlag,
 }
 
 var (
@@ -147,6 +148,8 @@ func faucetDirFromChainIndicators(chainID uint64, genesisHash common.Hash) strin
 		return filepath.Join(datadir, "kotti")
 	case params.MordorGenesisHash:
 		return filepath.Join(datadir, "mordor")
+	case params.SepoliaGenesisHash:
+		return filepath.Join(datadir, "sepolia")
 	}
 	return datadir
 }
@@ -164,6 +167,7 @@ func parseChainFlags() (gs *genesisT.Genesis, bs string, netid uint64) {
 		{*rinkebyFlag, params.DefaultRinkebyGenesisBlock(), nil},
 		{*kottiFlag, params.DefaultKottiGenesisBlock(), nil},
 		{*goerliFlag, params.DefaultGoerliGenesisBlock(), nil},
+		{*sepoliaFlag, params.DefaultSepoliaGenesisBlock(), nil},
 	}
 
 	var bss []string
@@ -179,7 +183,7 @@ func parseChainFlags() (gs *genesisT.Genesis, bs string, netid uint64) {
 
 	// allow overrides
 	if *genesisFlag != "" {
-		blob, err := ioutil.ReadFile(*genesisFlag)
+		blob, err := os.ReadFile(*genesisFlag)
 		if err != nil {
 			log.Crit("Failed to read genesis block contents", "genesis", *genesisFlag, "err", err)
 		}
@@ -409,7 +413,7 @@ func main() {
 
 	keystorePath := filepath.Join(faucetDirFromChainIndicators(chainID, genesisHash), "keys")
 	ks := keystore.NewKeyStore(keystorePath, keystore.StandardScryptN, keystore.StandardScryptP)
-	if blob, err = ioutil.ReadFile(*accJSONFlag); err != nil {
+	if blob, err = os.ReadFile(*accJSONFlag); err != nil {
 		log.Crit("Failed to read account key contents", "file", *accJSONFlag, "err", err)
 	}
 	acc, err := ks.Import(blob, pass, pass)
@@ -501,7 +505,6 @@ func migrateFaucetDirectory(faucetDataDir string) error {
 		return nil
 	}
 	if err == nil && d.IsDir() {
-
 		// Path exists and is a directory.
 		log.Warn("Found existing 'MultiFaucet' directory, migrating", "old", oldFaucetNodePath, "new", targetFaucetNodePath)
 		if err := os.Rename(oldFaucetNodePath, targetFaucetNodePath); err != nil {
@@ -518,7 +521,6 @@ func migrateFaucetDirectory(faucetDataDir string) error {
 
 // startStack starts the node stack, ensures peering, and assigns the respective ethclient to the faucet.
 func (f *faucet) startStack(genesis *genesisT.Genesis, port int, enodes []*enode.Node, network uint64) error {
-
 	genesisHash := core.GenesisToBlock(genesis, nil).Hash()
 
 	faucetDataDir := faucetDirFromChainIndicators(genesis.Config.GetChainID().Uint64(), genesisHash)
@@ -1240,7 +1242,7 @@ func authFacebook(url string) (string, string, common.Address, error) {
 	address := common.HexToAddress(string(regexp.MustCompile("0x[0-9a-fA-F]{40}").Find(body)))
 	if address == (common.Address{}) {
 		//lint:ignore ST1005 This error is to be displayed in the browser
-		return "", "", common.Address{}, errors.New("No Ethereum address found to fund")
+		return "", "", common.Address{}, errors.New("No Ethereum address found to fund. Please check the post URL and verify that it can be viewed publicly.")
 	}
 	var avatar string
 	if parts = regexp.MustCompile(`src="([^"]+fbcdn\.net[^"]+)"`).FindStringSubmatch(string(body)); len(parts) == 2 {

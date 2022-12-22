@@ -22,7 +22,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"os"
@@ -328,7 +327,7 @@ func TestOpenRPCMetaSchemaSpecLatest(t *testing.T) {
 	}
 
 	localJSONFilePath := "./testdata/open-rpc-meta-schema-1.14.0.json"
-	localJSONFile, err := ioutil.ReadFile(localJSONFilePath)
+	localJSONFile, err := os.ReadFile(localJSONFilePath)
 	if err != nil {
 		t.Fatalf("failed to load local spec JSON file: %v", err)
 	}
@@ -777,7 +776,6 @@ func (test rpcPrefixTest) check(t *testing.T, node *Node) {
 		if err == nil {
 			t.Errorf("Error: %s: WebSocket connection succeeded for path in wantNoWS", path)
 		}
-
 	}
 }
 
@@ -810,7 +808,6 @@ func doHTTPRequest(t *testing.T, req *http.Request) *http.Response {
 	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatalf("could not issue a GET request to the given endpoint: %v", err)
-
 	}
 	return resp
 }

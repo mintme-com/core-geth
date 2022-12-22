@@ -18,8 +18,8 @@ package integration
 
 import (
 	"encoding/json"
-	"io/ioutil"
 	"log"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -53,7 +53,6 @@ func TestConstantinopleEquivalence(t *testing.T) {
 }
 
 func TestEquivalent_Features(t *testing.T) {
-
 	mustValidate := func(c ctypes.ChainConfigurator) {
 		zero, max := uint64(0), uint64(math.MaxUint64)
 		for _, head := range []*uint64{
@@ -96,7 +95,6 @@ func TestEquivalent_Features(t *testing.T) {
 			return *n
 		}
 		debuglog := func(a, b ctypes.ChainConfigurator) {
-
 			// Debugging log lines.
 			t.Log("o", oconf.GetConsensusEngineType())
 			t.Log("m", mg.GetConsensusEngineType())
@@ -178,7 +176,7 @@ func TestEquivalent_ReadParity(t *testing.T) {
 		a := tests.Forks[k]
 
 		b := &parity.ParityChainSpec{}
-		bs, err := ioutil.ReadFile(filepath.Join(parityP, v))
+		bs, err := os.ReadFile(filepath.Join(parityP, v))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -227,7 +225,7 @@ func TestParityGeneses(t *testing.T) {
 	for _, tt := range testes {
 		p := filepath.Join("..", "params", "parity.json.d", tt.filename)
 		pspec := &parity.ParityChainSpec{}
-		b, err := ioutil.ReadFile(p)
+		b, err := os.ReadFile(p)
 		if err != nil {
 			t.Fatal(err)
 		}
