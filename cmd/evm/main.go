@@ -23,15 +23,9 @@ import (
 	"os"
 
 	"github.com/ethereum/go-ethereum/cmd/evm/internal/t8ntool"
+	"github.com/ethereum/go-ethereum/cmd/utils"
 	"github.com/ethereum/go-ethereum/internal/flags"
 	"github.com/urfave/cli/v2"
-)
-
-var (
-	gitCommit = "" // Git SHA1 commit hash of the release (set via linker flags)
-	gitDate   = ""
-
-	app = flags.NewApp(gitCommit, gitDate, "the evm command line interface")
 )
 
 var (
@@ -132,11 +126,6 @@ var (
 		Value: true,
 		Usage: "enable return data output",
 	}
-	EVMInterpreterFlag = &cli.StringFlag{
-		Name:  "vm.evm",
-		Usage: "External EVM configuration (default = built-in interpreter)",
-		Value: "",
-	}
 )
 
 var stateTransitionCommand = &cli.Command{
@@ -162,6 +151,8 @@ var stateTransitionCommand = &cli.Command{
 		t8ntool.ChainIDFlag,
 		t8ntool.RewardFlag,
 		t8ntool.VerbosityFlag,
+		utils.EVMInterpreterFlag,
+		utils.EWASMInterpreterFlag,
 	},
 }
 
@@ -188,6 +179,7 @@ var blockBuilderCommand = &cli.Command{
 		t8ntool.OutputBlockFlag,
 		t8ntool.InputHeaderFlag,
 		t8ntool.InputOmmersFlag,
+		t8ntool.InputWithdrawalsFlag,
 		t8ntool.InputTxsRlpFlag,
 		t8ntool.SealCliqueFlag,
 		t8ntool.SealEthashFlag,
@@ -196,6 +188,8 @@ var blockBuilderCommand = &cli.Command{
 		t8ntool.VerbosityFlag,
 	},
 }
+
+var app = flags.NewApp("the evm command line interface")
 
 func init() {
 	app.Flags = []cli.Flag{
@@ -222,12 +216,13 @@ func init() {
 		DisableStackFlag,
 		DisableStorageFlag,
 		DisableReturnDataFlag,
-		EVMInterpreterFlag,
+		utils.EVMInterpreterFlag,
 	}
 	app.Commands = []*cli.Command{
 		compileCommand,
 		disasmCommand,
 		runCommand,
+		blockTestCommand,
 		stateTestCommand,
 		stateTransitionCommand,
 		transactionCommand,

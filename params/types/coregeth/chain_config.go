@@ -208,25 +208,54 @@ type CoreGethChainConfig struct {
 	// EIP-4399: RANDOM opcode (supplanting DIFFICULTY)
 	EIP4399FBlock *big.Int `json:"eip4399FBlock,omitempty"`
 
-	// TODO: Document me.
+	// EIP-2930: Access lists.
 	EIP2930FBlock *big.Int `json:"eip2930FBlock,omitempty"`
 
 	EIP1559FBlock *big.Int `json:"eip1559FBlock,omitempty"`
 	EIP3541FBlock *big.Int `json:"eip3541FBlock,omitempty"`
 	EIP3529FBlock *big.Int `json:"eip3529FBlock,omitempty"`
 
-	EIP5133FBlock *big.Int `json:"eip5133FBloc,omitempty"`
+	EIP5133FBlock   *big.Int `json:"eip5133FBlock,omitempty"`
+	eip5133Inferred bool
+
+	// Shanghai
+	EIP3651FTime *uint64 `json:"eip3651FTime,omitempty"` // EIP-3651: Warm COINBASE
+	EIP3855FTime *uint64 `json:"eip3855FTime,omitempty"` // EIP-3855: PUSH0 instruction
+	EIP3860FTime *uint64 `json:"eip3860FTime,omitempty"` // EIP-3860: Limit and meter initcode
+	EIP4895FTime *uint64 `json:"eip4895FTime,omitempty"` // EIP-4895: Beacon chain push withdrawals as operations
+	EIP6049FTime *uint64 `json:"eip6049FTime,omitempty"` // EIP-6049: Deprecate SELFDESTRUCT. Note: EIP-6049 does not change the behavior of SELFDESTRUCT in and of itself, but formally announces client developers' intention of changing it in future upgrades. It is recommended that software which exposes the SELFDESTRUCT opcode to users warn them about an upcoming change in semantics.
+
+	// Shanghai with block activations
+	EIP3651FBlock *big.Int `json:"eip3651FBlock,omitempty"` // EIP-3651: Warm COINBASE
+	EIP3855FBlock *big.Int `json:"eip3855FBlock,omitempty"` // EIP-3855: PUSH0 instruction
+	EIP3860FBlock *big.Int `json:"eip3860FBlock,omitempty"` // EIP-3860: Limit and meter initcode
+	EIP4895FBlock *big.Int `json:"eip4895FBlock,omitempty"` // EIP-4895: Beacon chain push withdrawals as operations
+	EIP6049FBlock *big.Int `json:"eip6049FBlock,omitempty"` // EIP-6049: Deprecate SELFDESTRUCT. Note: EIP-6049 does not change the behavior of SELFDESTRUCT in and of itself, but formally announces client developers' intention of changing it in future upgrades. It is recommended that software which exposes the SELFDESTRUCT opcode to users warn them about an upcoming change in semantics.
+
+	// Cancun
+	EIP4844FTime *uint64 `json:"eip4844FTime,omitempty"` // EIP-4844: Shard Blob Transactions https://eips.ethereum.org/EIPS/eip-4844
+	EIP1153FTime *uint64 `json:"eip1153FTime,omitempty"` // EIP-1153: Transient Storage opcodes https://eips.ethereum.org/EIPS/eip-1153
+	EIP5656FTime *uint64 `json:"eip5656FTime,omitempty"` // EIP-5656: MCOPY - Memory copying instruction https://eips.ethereum.org/EIPS/eip-5656
+	EIP6780FTime *uint64 `json:"eip6780FTime,omitempty"` // EIP-6780: SELFDESTRUCT only in same transaction https://eips.ethereum.org/EIPS/eip-6780
 
 	MergeNetsplitVBlock *big.Int `json:"mergeNetsplitVBlock,omitempty"` // Virtual fork after The Merge to use as a network splitter
 
 	DisposalBlock *big.Int `json:"disposalBlock,omitempty"` // Bomb disposal HF block
 
 	// Various consensus engines
-	Ethash *ctypes.EthashConfig `json:"ethash,omitempty"`
-	Clique *ctypes.CliqueConfig `json:"clique,omitempty"`
-	Lyra2  *ctypes.Lyra2Config  `json:"lyra2,omitempty"`
+	Ethash    *ctypes.EthashConfig `json:"ethash,omitempty"`
+	Clique    *ctypes.CliqueConfig `json:"clique,omitempty"`
+	Lyra2     *ctypes.Lyra2Config  `json:"lyra2,omitempty"`
+	IsDevMode bool                 `json:"isDev,omitempty"`
 
+	// TerminalTotalDifficulty is the amount of total difficulty reached by
+	// the network that triggers the consensus upgrade.
 	TerminalTotalDifficulty *big.Int `json:"terminalTotalDifficulty,omitempty"`
+
+	// TerminalTotalDifficultyPassed is a flag specifying that the network already
+	// passed the terminal total difficulty. Its purpose is to disable legacy sync
+	// even without having seen the TTD locally (safer long term).
+	TerminalTotalDifficultyPassed bool `json:"terminalTotalDifficultyPassed,omitempty"`
 
 	TrustedCheckpoint       *ctypes.TrustedCheckpoint      `json:"trustedCheckpoint,omitempty"`
 	TrustedCheckpointOracle *ctypes.CheckpointOracleConfig `json:"trustedCheckpointOracle,omitempty"`

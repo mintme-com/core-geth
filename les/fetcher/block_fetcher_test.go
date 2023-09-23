@@ -31,16 +31,22 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/params/types/genesisT"
 	"github.com/ethereum/go-ethereum/params/vars"
 	"github.com/ethereum/go-ethereum/trie"
 )
 
 var (
-	testdb       = rawdb.NewMemoryDatabase()
-	testKey, _   = crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
-	testAddress  = crypto.PubkeyToAddress(testKey.PublicKey)
-	genesis      = core.GenesisBlockForTesting(testdb, testAddress, big.NewInt(1000000000000000))
-	unknownBlock = types.NewBlock(&types.Header{GasLimit: vars.GenesisGasLimit, BaseFee: big.NewInt(vars.InitialBaseFee)}, nil, nil, nil, trie.NewStackTrie(nil))
+	testdb      = rawdb.NewMemoryDatabase()
+	testKey, _  = crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
+	testAddress = crypto.PubkeyToAddress(testKey.PublicKey)
+
+	gspec = &genesisT.Genesis{
+		Alloc:   genesisT.GenesisAlloc{testAddress: {Balance: big.NewInt(1000000000000000)}},
+		BaseFee: big.NewInt(vars.InitialBaseFee),
+	}
+	genesis      = core.MustCommitGenesis(testdb, gspec)
+	unknownBlock = types.NewBlock(&types.Header{Root: types.EmptyRootHash, GasLimit: vars.GenesisGasLimit, BaseFee: big.NewInt(vars.InitialBaseFee)}, nil, nil, nil, trie.NewStackTrie(nil))
 )
 
 // makeChain creates a chain of n blocks starting at and including parent.
@@ -53,7 +59,7 @@ func makeChain(n int, seed byte, parent *types.Block) ([]common.Hash, map[common
 
 		// If the block number is multiple of 3, send a bonus transaction to the miner
 		if parent == genesis && i%3 == 0 {
-			signer := types.MakeSigner(params.TestChainConfig, block.Number())
+			signer := types.MakeSigner(params.TestChainConfig, block.Number(), block.Timestamp())
 			tx, err := types.SignTx(types.NewTransaction(block.TxNonce(testAddress), common.Address{seed}, big.NewInt(1000), vars.TxGas, block.BaseFee(), nil), signer, testKey)
 			if err != nil {
 				panic(err)

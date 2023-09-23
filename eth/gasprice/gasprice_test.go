@@ -48,6 +48,15 @@ func (b *testBackend) HeaderByNumber(ctx context.Context, number rpc.BlockNumber
 	if number > testHead {
 		return nil, nil
 	}
+	if number == rpc.EarliestBlockNumber {
+		number = 0
+	}
+	if number == rpc.FinalizedBlockNumber {
+		return b.chain.CurrentFinalBlock(), nil
+	}
+	if number == rpc.SafeBlockNumber {
+		return b.chain.CurrentSafeBlock(), nil
+	}
 	if number == rpc.LatestBlockNumber {
 		number = testHead
 	}
@@ -64,6 +73,15 @@ func (b *testBackend) HeaderByNumber(ctx context.Context, number rpc.BlockNumber
 func (b *testBackend) BlockByNumber(ctx context.Context, number rpc.BlockNumber) (*types.Block, error) {
 	if number > testHead {
 		return nil, nil
+	}
+	if number == rpc.EarliestBlockNumber {
+		number = 0
+	}
+	if number == rpc.FinalizedBlockNumber {
+		number = rpc.BlockNumber(b.chain.CurrentFinalBlock().Number.Uint64())
+	}
+	if number == rpc.SafeBlockNumber {
+		number = rpc.BlockNumber(b.chain.CurrentSafeBlock().Number.Uint64())
 	}
 	if number == rpc.LatestBlockNumber {
 		number = testHead
@@ -98,6 +116,12 @@ func (b *testBackend) SubscribeChainHeadEvent(ch chan<- core.ChainHeadEvent) eve
 	return nil
 }
 
+func (b *testBackend) teardown() {
+	b.chain.Stop()
+}
+
+// newTestBackend creates a test backend. OBS: don't forget to invoke tearDown
+// after use, otherwise the blockchain instance will mem-leak via goroutines.
 func newTestBackend(t *testing.T, londonBlock *big.Int, pending bool) *testBackend {
 	var (
 		key, _ = crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
@@ -118,6 +142,7 @@ func newTestBackend(t *testing.T, londonBlock *big.Int, pending bool) *testBacke
 		config.SetEIP3198Transition(&londonN)
 		config.SetEthashEIP4345Transition(&londonN) // ArrowGlacier
 		config.SetEthashEIP5133Transition(&londonN) // GrayGlacier
+		config.SetEthashTerminalTotalDifficulty(big.NewInt(0))
 	} else {
 		config.SetEIP1559Transition(nil)
 		config.SetEIP3541Transition(nil)
@@ -128,10 +153,9 @@ func newTestBackend(t *testing.T, londonBlock *big.Int, pending bool) *testBacke
 	}
 
 	engine := ethash.NewFaker()
-	db := rawdb.NewMemoryDatabase()
-	genesis := core.MustCommitGenesis(db, gspec)
+
 	// Generate testing blocks
-	blocks, _ := core.GenerateChain(gspec.Config, genesis, engine, db, testHead+1, func(i int, b *core.BlockGen) {
+	_, blocks, _ := core.GenerateChainWithGenesis(gspec, engine, testHead+1, func(i int, b *core.BlockGen) {
 		b.SetCoinbase(common.Address{1})
 
 		var txdata types.TxData
@@ -158,13 +182,13 @@ func newTestBackend(t *testing.T, londonBlock *big.Int, pending bool) *testBacke
 		b.AddTx(types.MustSignNewTx(key, signer, txdata))
 	})
 	// Construct testing chain
-	diskdb := rawdb.NewMemoryDatabase()
-	core.MustCommitGenesis(diskdb, gspec)
-	chain, err := core.NewBlockChain(diskdb, &core.CacheConfig{TrieCleanNoPrefetch: true}, gspec.Config, engine, vm.Config{}, nil, nil)
+	chain, err := core.NewBlockChain(rawdb.NewMemoryDatabase(), &core.CacheConfig{TrieCleanNoPrefetch: true}, gspec, nil, engine, vm.Config{}, nil, nil)
 	if err != nil {
 		t.Fatalf("Failed to create local chain, %v", err)
 	}
 	chain.InsertChain(blocks)
+	chain.SetFinalized(chain.GetBlockByNumber(25).Header())
+	chain.SetSafe(chain.GetBlockByNumber(25).Header())
 	return &testBackend{chain: chain, pending: pending}
 }
 
@@ -198,6 +222,7 @@ func TestSuggestTipCap(t *testing.T) {
 
 		// The gas price sampled is: 32G, 31G, 30G, 29G, 28G, 27G
 		got, err := oracle.SuggestTipCap(context.Background())
+		backend.teardown()
 		if err != nil {
 			t.Fatalf("Failed to retrieve recommended gas price: %v", err)
 		}

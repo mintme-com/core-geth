@@ -18,6 +18,7 @@ package tests
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -32,7 +33,6 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/core/vm"
-	"github.com/ethereum/go-ethereum/params/types/coregeth"
 	"github.com/ethereum/go-ethereum/params/types/ctypes"
 )
 
@@ -65,8 +65,13 @@ var (
 	legacyStateTestDir = filepath.Join(baseDir, "LegacyTests", "Constantinople", "GeneralStateTests")
 	transactionTestDir = filepath.Join(baseDir, "TransactionTests")
 	rlpTestDir         = filepath.Join(baseDir, "RLPTests")
-	difficultyTestDir  = filepath.Join(baseDir, "BasicTests")
+	difficultyTestDir  = filepath.Join(baseDir, "DifficultyTests")
 	benchmarksDir      = filepath.Join(".", "evm-benchmarks", "benchmarks")
+
+	baseDirETC           = filepath.Join(".", "testdata-etc")
+	stateTestDirETC      = filepath.Join(baseDirETC, "GeneralStateTests")
+	legacyTestDirETC     = filepath.Join(baseDirETC, "LegacyTests", "Constantinople", "GeneralStateTests")
+	difficultyTestDirETC = filepath.Join(baseDirETC, "DifficultyTests")
 )
 
 func readJSON(reader io.Reader, value interface{}) error {
@@ -149,6 +154,7 @@ func (tm *testMatcher) skipFork(pattern string) {
 }
 
 // fails adds an expected failure for tests matching the pattern.
+//
 //nolint:unused
 func (tm *testMatcher) fails(pattern string, reason string) {
 	if reason == "" {
@@ -187,18 +193,6 @@ func (tm *testMatcher) findSkip(name string) (reason string, skipload bool) {
 	return "", false
 }
 
-// findConfig returns the chain config matching defined patterns.
-func (tm *testMatcher) findConfig(name string) (config ctypes.ChainConfigurator, configRegexKey string) {
-	// TODO(fjl): name can be derived from testing.T when min Go version is 1.8
-	for _, m := range tm.configpat {
-		if m.p.MatchString(name) {
-			return m.config, m.p.String()
-		}
-	}
-	log.Println("using empty config", name)
-	return new(coregeth.CoreGethChainConfig), ""
-}
-
 // checkFailure checks whether a failure is expected.
 func (tm *testMatcher) checkFailure(t *testing.T, err error) error {
 	failReason := ""
@@ -214,7 +208,7 @@ func (tm *testMatcher) checkFailure(t *testing.T, err error) error {
 			t.Logf("error: %v", err)
 			return nil
 		}
-		return fmt.Errorf("test succeeded unexpectedly")
+		return errors.New("test succeeded unexpectedly")
 	}
 	return err
 }

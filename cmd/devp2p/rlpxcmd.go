@@ -17,12 +17,12 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"net"
 
 	"github.com/ethereum/go-ethereum/cmd/devp2p/internal/ethtest"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/internal/utesting"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/p2p/rlpx"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -92,7 +92,7 @@ func rlpxPing(ctx *cli.Context) error {
 	case 1:
 		var msg []p2p.DiscReason
 		if rlp.DecodeBytes(data, &msg); len(msg) == 0 {
-			return fmt.Errorf("invalid disconnect message")
+			return errors.New("invalid disconnect message")
 		}
 		return fmt.Errorf("received disconnect message: %v", msg[0])
 	default:
@@ -110,12 +110,7 @@ func rlpxEthTest(ctx *cli.Context) error {
 	if err != nil {
 		exit(err)
 	}
-	// check if given node supports eth66, and if so, run eth66 protocol tests as well
-	is66Failed, _ := utesting.Run(utesting.Test{Name: "Is_66", Fn: suite.Is_66})
-	if is66Failed {
-		return runTests(ctx, suite.EthTests())
-	}
-	return runTests(ctx, suite.AllEthTests())
+	return runTests(ctx, suite.EthTests())
 }
 
 // rlpxSnapTest runs the snap protocol test suite.

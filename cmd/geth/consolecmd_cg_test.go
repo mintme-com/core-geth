@@ -34,11 +34,8 @@ func TestConsoleCmdNetworkIdentities(t *testing.T) {
 
 		// All other possible --<chain> values.
 		{[]string{"--mainnet"}, 1, 1, params.MainnetGenesisHash.Hex()},
-		{[]string{"--ropsten"}, 3, 3, params.RopstenGenesisHash.Hex()},
-		{[]string{"--rinkeby"}, 4, 4, params.RinkebyGenesisHash.Hex()},
 		{[]string{"--sepolia"}, 11155111, 11155111, params.SepoliaGenesisHash.Hex()},
 		{[]string{"--goerli"}, 5, 5, params.GoerliGenesisHash.Hex()},
-		{[]string{"--kotti"}, 6, 6, params.KottiGenesisHash.Hex()},
 		{[]string{"--mordor"}, 7, 63, params.MordorGenesisHash.Hex()},
 		{[]string{"--mintme"}, 37480, 24734, params.MintMeGenesisHash.Hex()},
 		{[]string{"--dev"}, 1337, 1337, "0x0"},
@@ -67,6 +64,7 @@ func consoleCmdStdoutTest(flags []string, execCmd string, want interface{}) func
 		flags = append(flags, "--ipcpath", filepath.Join(os.TempDir(), "geth.ipc"), "--exec", execCmd, "console")
 		t.Log("flags:", flags)
 		geth := runGeth(t, flags...)
+		geth.KillTimeout = 20 * time.Second
 		geth.Expect(fmt.Sprintf(`%v
 `, want))
 		geth.ExpectExit()

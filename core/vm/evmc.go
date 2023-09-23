@@ -226,11 +226,11 @@ func (host *hostContext) Selfdestruct(evmcAddr evmc.Address, evmcBeneficiary evm
 	addr := common.Address(evmcAddr)
 	beneficiary := common.Address(evmcBeneficiary)
 	db := host.env.StateDB
-	if !db.HasSuicided(addr) {
+	if !db.HasSelfDestructed(addr) {
 		db.AddRefund(vars.SelfdestructRefundGas)
 	}
 	db.AddBalance(beneficiary, db.GetBalance(addr))
-	db.Suicide(addr)
+	db.SelfDestruct(addr)
 }
 
 func (host *hostContext) GetTxContext() evmc.TxContext {
@@ -239,7 +239,7 @@ func (host *hostContext) GetTxContext() evmc.TxContext {
 		Origin:     evmc.Address(host.env.TxContext.Origin),
 		Coinbase:   evmc.Address(host.env.Context.Coinbase),
 		Number:     host.env.Context.BlockNumber.Int64(),
-		Timestamp:  host.env.Context.Time.Int64(),
+		Timestamp:  int64(host.env.Context.Time),
 		GasLimit:   int64(host.env.Context.GasLimit),
 		Difficulty: evmc.Hash(common.BigToHash(host.env.Context.Difficulty)),
 		ChainID:    evmc.Hash(common.BigToHash(host.env.chainConfig.GetChainID())),

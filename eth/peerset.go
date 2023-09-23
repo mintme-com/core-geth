@@ -41,7 +41,7 @@ var (
 	errPeerNotRegistered = errors.New("peer not registered")
 
 	// errSnapWithoutEth is returned if a peer attempts to connect only on the
-	// snap protocol without advertizing the eth main protocol.
+	// snap protocol without advertising the eth main protocol.
 	errSnapWithoutEth = errors.New("peer connected on snap without compatible eth support")
 )
 
@@ -240,7 +240,7 @@ func (ps *peerSet) peerWithHighestTD() *eth.Peer {
 		bestTd   *big.Int
 	)
 	for _, p := range ps.peers {
-		if _, td := p.Head(); bestPeer == nil || td.Cmp(bestTd) > 0 {
+		if _, td, _ := p.Head(); bestPeer == nil || td.Cmp(bestTd) > 0 {
 			bestPeer, bestTd = p.Peer, td
 		}
 	}
@@ -268,7 +268,7 @@ func (ps *peerSet) WorstPeer() *ethPeer {
 		worstTD   *big.Int
 	)
 	for _, p := range ps.peers {
-		if _, td := p.Head(); worstPeer == nil || td.Cmp(worstTD) < 0 {
+		if _, td, _ := p.Head(); worstPeer == nil || td.Cmp(worstTD) < 0 {
 			worstPeer, worstTD = p, td
 		}
 	}

@@ -19,6 +19,7 @@ package tests
 import (
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"regexp"
@@ -39,6 +40,7 @@ import (
 	"github.com/ethereum/go-ethereum/params/types/ctypes"
 	"github.com/ethereum/go-ethereum/params/types/genesisT"
 	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/ethereum/go-ethereum/trie"
 	"golang.org/x/crypto/sha3"
 )
 
@@ -71,9 +73,9 @@ func (t StateTest) MarshalJSON() ([]byte, error) {
 type stJSON struct {
 	Info stInfo                   `json:"_info"`
 	Env  stEnv                    `json:"env"`
-	Pre  genesisT.GenesisAlloc    `json:"pre"`
+	Pre  stPre                    `json:"pre"`
 	Tx   stTransaction            `json:"transaction"`
-	Out  hexutil.Bytes            `json:"out"`
+	Out  hexutil.Bytes            `json:"out,omitempty"`
 	Post map[string][]stPostState `json:"post"`
 }
 
@@ -81,10 +83,10 @@ type stInfo struct {
 	Comment            string                 `json:"comment"`
 	FillingRPCServer   string                 `json:"filling-rpc-server"`
 	FillingToolVersion string                 `json:"filling-tool-version"`
-	FilledWith         string                 `json:"filledWith"`
-	LLLCVersion        string                 `json:"lllcversion"`
-	Source             string                 `json:"source"`
-	SourceHash         string                 `json:"sourceHash"`
+	FilledWith         string                 `json:"filledWith,omitempty"`
+	LLLCVersion        string                 `json:"lllcversion,omitempty"`
+	Source             string                 `json:"source,omitempty"`
+	SourceHash         string                 `json:"sourceHash,omitempty"`
 	Labels             map[string]interface{} `json:"labels,omitempty"`
 }
 
@@ -92,7 +94,7 @@ type stPostState struct {
 	Root            common.UnprefixedHash `json:"hash"`
 	Logs            common.UnprefixedHash `json:"logs"`
 	TxBytes         hexutil.Bytes         `json:"txbytes"`
-	ExpectException string                `json:"expectException"`
+	ExpectException string                `json:"expectException,omitempty"`
 	Indexes         stPostStateIndexes    `json:"indexes"`
 
 	// filled can be set to true when the subtest has been written,
@@ -111,29 +113,31 @@ type stPostStateIndexes struct {
 type stEnv struct {
 	Coinbase   common.Address `json:"currentCoinbase"   gencodec:"required"`
 	Difficulty *big.Int       `json:"currentDifficulty" gencodec:"optional"`
-	Random     *big.Int       `json:"currentRandom"     gencodec:"optional"`
+	Random     *big.Int       `json:"currentRandom,omitempty"     gencodec:"optional"`
 	GasLimit   uint64         `json:"currentGasLimit"   gencodec:"required"`
 	Number     uint64         `json:"currentNumber"     gencodec:"required"`
 	Timestamp  uint64         `json:"currentTimestamp"  gencodec:"required"`
-	BaseFee    *big.Int       `json:"currentBaseFee"    gencodec:"optional"`
+	BaseFee    *big.Int       `json:"currentBaseFee,omitempty"    gencodec:"optional"`
+	Previous   common.Hash    `json:"previousHash,omitempty"      gencodec:"optional"` // Previous is an unused field, but it exists in the tests.
 }
 
 type stEnvMarshaling struct {
-	Coinbase   common.UnprefixedAddress
+	Coinbase   common.Address
 	Difficulty *math.HexOrDecimal256
 	Random     *math.HexOrDecimal256
 	GasLimit   math.HexOrDecimal64
 	Number     math.HexOrDecimal64
 	Timestamp  math.HexOrDecimal64
 	BaseFee    *math.HexOrDecimal256
+	Previous   common.Hash // unused
 }
 
 //go:generate go run github.com/fjl/gencodec -type stTransaction -field-override stTransactionMarshaling -out gen_sttransaction.go
 
 type stTransaction struct {
 	GasPrice             *big.Int            `json:"gasPrice"`
-	MaxFeePerGas         *big.Int            `json:"maxFeePerGas"`
-	MaxPriorityFeePerGas *big.Int            `json:"maxPriorityFeePerGas"`
+	MaxFeePerGas         *big.Int            `json:"maxFeePerGas,omitempty"`
+	MaxPriorityFeePerGas *big.Int            `json:"maxPriorityFeePerGas,omitempty"`
 	Nonce                uint64              `json:"nonce"`
 	To                   string              `json:"to"`
 	Data                 []string            `json:"data"`
@@ -141,6 +145,9 @@ type stTransaction struct {
 	GasLimit             []uint64            `json:"gasLimit"`
 	Value                []string            `json:"value"`
 	PrivateKey           []byte              `json:"secretKey"`
+	Sender               common.Address      `json:"sender,omitempty"`
+	BlobVersionedHashes  []common.Hash       `json:"blobVersionedHashes,omitempty"`
+	BlobGasFeeCap        *big.Int            `json:"maxFeePerBlobGas,omitempty"`
 }
 
 type stTransactionMarshaling struct {
@@ -150,6 +157,7 @@ type stTransactionMarshaling struct {
 	Nonce                math.HexOrDecimal64
 	GasLimit             []math.HexOrDecimal64
 	PrivateKey           hexutil.Bytes
+	BlobGasFeeCap        *math.HexOrDecimal256
 }
 
 // GetChainConfig takes a fork definition and returns a chain config.
@@ -195,30 +203,74 @@ outer:
 	return sub
 }
 
+// checkError checks if the error returned by the state transition matches any expected error.
+// A failing expectation returns a wrapped version of the original error, if any,
+// or a new error detailing the failing expectation.
+// This function does not return or modify the original error, it only evaluates and returns expectations for the error.
+func (t *StateTest) checkError(subtest StateSubtest, err error) error {
+	expectedError := t.json.Post[subtest.Fork][subtest.Index].ExpectException
+	if err == nil && expectedError == "" {
+		return nil
+	}
+	if err == nil && expectedError != "" {
+		return fmt.Errorf("expected error %q, got no error", expectedError)
+	}
+	if err != nil && expectedError == "" {
+		return fmt.Errorf("unexpected error: %w", err)
+	}
+	if err != nil && expectedError != "" {
+		// Ignore expected errors (TODO MariusVanDerWijden check error string)
+		return nil
+	}
+	return nil
+}
+
 // Run executes a specific subtest and verifies the post-state and logs
 func (t *StateTest) Run(subtest StateSubtest, vmconfig vm.Config, snapshotter bool) (*snapshot.Tree, *state.StateDB, error) {
 	snaps, statedb, root, err := t.RunNoVerify(subtest, vmconfig, snapshotter)
+	if checkedErr := t.checkError(subtest, err); checkedErr != nil {
+		return snaps, statedb, checkedErr
+	}
+	// The error has been checked; if it was unexpected, it's already returned.
 	if err != nil {
-		return snaps, statedb, err
+		// Here, an error exists but it was expected.
+		// We do not check the post state or logs.
+		return snaps, statedb, nil
 	}
 	post := t.json.Post[subtest.Fork][subtest.Index]
 	// N.B: We need to do this in a two-step process, because the first Commit takes care
-	// of suicides, and we need to touch the coinbase _after_ it has potentially suicided.
+	// of self-destructs, and we need to touch the coinbase _after_ it has potentially self-destructed.
 	if root != common.Hash(post.Root) {
 		return snaps, statedb, fmt.Errorf("post state root mismatch: got %x, want %x", root, post.Root)
 	}
 	if logs := rlpHash(statedb.Logs()); logs != common.Hash(post.Logs) {
 		return snaps, statedb, fmt.Errorf("post state logs hash mismatch: got %x, want %x", logs, post.Logs)
 	}
+	// Re-init the post-state instance for further operation
+	statedb, err = state.New(root, statedb.Database(), snaps)
+	if err != nil {
+		return nil, nil, err
+	}
 	return snaps, statedb, nil
 }
 
 // RunNoVerify runs a specific subtest and returns the statedb and post-state root
 func (t *StateTest) RunNoVerifyWithPost(subtest StateSubtest, vmconfig vm.Config, snapshotter bool, post stPostState) (*snapshot.Tree, *state.StateDB, common.Hash, error) {
-	stPostCp := t.json.Post[subtest.Fork][subtest.Index]
+	var stPostCp stPostState
+	if v, ok := t.json.Post[subtest.Fork]; ok {
+		if len(v) > subtest.Index {
+			stPostCp = v[subtest.Index]
+		}
+	}
 	defer func() {
 		t.json.Post[subtest.Fork][subtest.Index] = stPostCp
 	}()
+	if _, ok := t.json.Post[subtest.Fork]; !ok {
+		t.json.Post[subtest.Fork] = make([]stPostState, subtest.Index+1)
+	}
+	if len(t.json.Post[subtest.Fork]) <= subtest.Index {
+		t.json.Post[subtest.Fork] = append(t.json.Post[subtest.Fork], make([]stPostState, subtest.Index-len(t.json.Post[subtest.Fork])+1)...)
+	}
 	t.json.Post[subtest.Fork][subtest.Index] = post
 	return t.RunNoVerify(subtest, vmconfig, snapshotter)
 }
@@ -231,7 +283,7 @@ func (t *StateTest) RunNoVerify(subtest StateSubtest, vmconfig vm.Config, snapsh
 	}
 	vmconfig.ExtraEips = eips
 	block := core.GenesisToBlock(t.genesis(config), nil)
-	snaps, statedb := MakePreState(rawdb.NewMemoryDatabase(), t.json.Pre, snapshotter)
+	snaps, statedb := MakePreState(rawdb.NewMemoryDatabase(), t.json.Pre.toGenesisAlloc(), snapshotter)
 
 	var baseFee *big.Int
 	if config.IsEnabled(config.GetEIP1559Transition, new(big.Int)) {
@@ -240,6 +292,11 @@ func (t *StateTest) RunNoVerify(subtest StateSubtest, vmconfig vm.Config, snapsh
 			// Retesteth uses `0x10` for genesis baseFee. Therefore, it defaults to
 			// parent - 2 : 0xa as the basefee for 'this' context.
 			baseFee = big.NewInt(0x0a)
+		}
+	} else {
+		// Configure a default zero-value gasPrice in case it is not set.
+		if t.json.Tx.GasPrice == nil {
+			t.json.Tx.GasPrice = big.NewInt(0x0a)
 		}
 	}
 	post := t.json.Post[subtest.Fork][subtest.Index]
@@ -267,6 +324,9 @@ func (t *StateTest) RunNoVerify(subtest StateSubtest, vmconfig vm.Config, snapsh
 	context.GetHash = vmTestBlockHash
 	context.BaseFee = baseFee
 	context.Random = nil
+	if t.json.Env.Difficulty != nil {
+		context.Difficulty = t.json.Env.Difficulty
+	}
 	if config.IsEnabled(config.GetEIP1559Transition, new(big.Int)) && t.json.Env.Random != nil {
 		rnd := common.BigToHash(t.json.Env.Random)
 		context.Random = &rnd
@@ -277,20 +337,21 @@ func (t *StateTest) RunNoVerify(subtest StateSubtest, vmconfig vm.Config, snapsh
 	snapshot := statedb.Snapshot()
 	gaspool := new(core.GasPool)
 	gaspool.AddGas(block.GasLimit())
-	if _, err := core.ApplyMessage(evm, msg, gaspool); err != nil {
+	_, err = core.ApplyMessage(evm, msg, gaspool)
+	if err != nil {
 		statedb.RevertToSnapshot(snapshot)
 	}
 	// Add 0-value mining reward. This only makes a difference in the cases
 	// where
-	// - the coinbase suicided, or
+	// - the coinbase self-destructed, or
 	// - there are only 'bad' transactions, which aren't executed. In those cases,
 	//   the coinbase gets no txfee, so isn't created, and thus needs to be touched
 	statedb.AddBalance(block.Coinbase(), new(big.Int))
 	// Commit block
-	statedb.Commit(config.IsEnabled(config.GetEIP161dTransition, block.Number()))
+	statedb.Commit(block.NumberU64(), config.IsEnabled(config.GetEIP161dTransition, block.Number()))
 	// And _now_ get the state root
 	root := statedb.IntermediateRoot(config.IsEnabled(config.GetEIP161dTransition, block.Number()))
-	return snaps, statedb, root, nil
+	return snaps, statedb, root, err
 }
 
 func (t *StateTest) gasLimit(subtest StateSubtest) uint64 {
@@ -298,8 +359,8 @@ func (t *StateTest) gasLimit(subtest StateSubtest) uint64 {
 }
 
 func MakePreState(db ethdb.Database, accounts genesisT.GenesisAlloc, snapshotter bool) (*snapshot.Tree, *state.StateDB) {
-	sdb := state.NewDatabase(db)
-	statedb, _ := state.New(common.Hash{}, sdb, nil)
+	sdb := state.NewDatabaseWithConfig(db, &trie.Config{Preimages: true})
+	statedb, _ := state.New(types.EmptyRootHash, sdb, nil)
 	for addr, a := range accounts {
 		statedb.SetCode(addr, a.Code)
 		statedb.SetNonce(addr, a.Nonce)
@@ -309,11 +370,17 @@ func MakePreState(db ethdb.Database, accounts genesisT.GenesisAlloc, snapshotter
 		}
 	}
 	// Commit and re-open to start with a clean state.
-	root, _ := statedb.Commit(false)
+	root, _ := statedb.Commit(0, false)
 
 	var snaps *snapshot.Tree
 	if snapshotter {
-		snaps, _ = snapshot.New(db, sdb.TrieDB(), 1, root, false, true, false)
+		snapconfig := snapshot.Config{
+			CacheSize:  1,
+			Recovery:   false,
+			NoBuild:    false,
+			AsyncBuild: false,
+		}
+		snaps, _ = snapshot.New(snapconfig, db, sdb.TrieDB(), root)
 	}
 	statedb, _ = state.New(root, sdb, snaps)
 	return snaps, statedb
@@ -327,7 +394,7 @@ func (t *StateTest) genesis(config ctypes.ChainConfigurator) *genesisT.Genesis {
 		GasLimit:   t.json.Env.GasLimit,
 		Number:     t.json.Env.Number,
 		Timestamp:  t.json.Env.Timestamp,
-		Alloc:      t.json.Pre,
+		Alloc:      t.json.Pre.toGenesisAlloc(),
 	}
 	if t.json.Env.Random != nil {
 		// Post-Merge
@@ -337,7 +404,7 @@ func (t *StateTest) genesis(config ctypes.ChainConfigurator) *genesisT.Genesis {
 	return genesis
 }
 
-func (tx *stTransaction) toMessage(ps stPostState, baseFee *big.Int) (core.Message, error) {
+func (tx *stTransaction) toMessage(ps stPostState, baseFee *big.Int) (*core.Message, error) {
 	// Derive sender from private key if present.
 	var from common.Address
 	if len(tx.PrivateKey) > 0 {
@@ -402,11 +469,23 @@ func (tx *stTransaction) toMessage(ps stPostState, baseFee *big.Int) (core.Messa
 			tx.MaxFeePerGas)
 	}
 	if gasPrice == nil {
-		return nil, fmt.Errorf("no gas price provided")
+		return nil, errors.New("no gas price provided")
 	}
 
-	msg := types.NewMessage(from, to, tx.Nonce, value, gasLimit, gasPrice,
-		tx.MaxFeePerGas, tx.MaxPriorityFeePerGas, data, accessList, false)
+	msg := &core.Message{
+		From:          from,
+		To:            to,
+		Nonce:         tx.Nonce,
+		Value:         value,
+		GasLimit:      gasLimit,
+		GasPrice:      gasPrice,
+		GasFeeCap:     tx.MaxFeePerGas,
+		GasTipCap:     tx.MaxPriorityFeePerGas,
+		Data:          data,
+		AccessList:    accessList,
+		BlobHashes:    tx.BlobVersionedHashes,
+		BlobGasFeeCap: tx.BlobGasFeeCap,
+	}
 	return msg, nil
 }
 
