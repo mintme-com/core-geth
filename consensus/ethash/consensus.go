@@ -30,6 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/misc"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
+	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
@@ -234,7 +235,7 @@ func (ethash *Ethash) VerifyUncles(chain consensus.ChainReader, block *types.Blo
 // stock Ethereum ethash engine.
 // See YP section 4.3.4. "Block Header Validity"
 func (ethash *Ethash) verifyHeader(chain consensus.ChainHeaderReader, header, parent *types.Header, uncle bool, seal bool, unixNow int64) error {
-	// Ensure that the header's extra-data section is of a reasonable size
+	// Ensure that the header's extra-data section is of a reasonable size (32)
 	if uint64(len(header.Extra)) > vars.MaximumExtraDataSize {
 		return fmt.Errorf("extra-data too long: %d > %d", len(header.Extra), vars.MaximumExtraDataSize)
 	}
@@ -244,12 +245,12 @@ func (ethash *Ethash) verifyHeader(chain consensus.ChainHeaderReader, header, pa
 			return consensus.ErrFutureBlock
 		}
 	}
+	// Verify the timestamp
 	if header.Time <= parent.Time {
 		return errOlderBlockTime
 	}
 	// Verify the block's difficulty based on its timestamp and parent's difficulty
 	expected := ethash.CalcDifficulty(chain, header.Time, parent)
-
 	if expected.Cmp(header.Difficulty) != 0 {
 		return fmt.Errorf("invalid difficulty: have %v, want %v", header.Difficulty, expected)
 	}
@@ -260,6 +261,10 @@ func (ethash *Ethash) verifyHeader(chain consensus.ChainHeaderReader, header, pa
 	// Verify that the gasUsed is <= gasLimit
 	if header.GasUsed > header.GasLimit {
 		return fmt.Errorf("invalid gasUsed: have %d, gasLimit %d", header.GasUsed, header.GasLimit)
+	}
+	// Verify that the block number is parent's +1
+	if diff := new(big.Int).Sub(header.Number, parent.Number); diff.Cmp(big.NewInt(1)) != 0 {
+		return consensus.ErrInvalidNumber
 	}
 	// Verify the block's gas usage and (if applicable) verify the base fee.
 	if !chain.Config().IsEnabled(chain.Config().GetEIP1559Transition, header.Number) {
@@ -274,16 +279,55 @@ func (ethash *Ethash) verifyHeader(chain consensus.ChainHeaderReader, header, pa
 		// Verify the header's EIP-1559 attributes.
 		return err
 	}
-	// Verify that the block number is parent's +1
-	if diff := new(big.Int).Sub(header.Number, parent.Number); diff.Cmp(big.NewInt(1)) != 0 {
-		return consensus.ErrInvalidNumber
+
+	// Shanghai
+	// EIP-4895: Beacon chain push withdrawals as operations
+	// Verify the non-existence of withdrawalsHash (EIP-4895: Beacon chain push withdrawals as operations).
+	eip4895Enabled := chain.Config().IsEnabledByTime(chain.Config().GetEIP4895TransitionTime, &header.Time) || chain.Config().IsEnabled(chain.Config().GetEIP4895Transition, header.Number)
+	if !eip4895Enabled {
+		if header.WithdrawalsHash != nil {
+			return fmt.Errorf("invalid withdrawalsHash: have %x, expected nil", header.WithdrawalsHash)
+		}
+	} else {
+		if header.WithdrawalsHash == nil {
+			return errors.New("header is missing withdrawalsHash")
+		}
 	}
-	if chain.Config().IsEnabledByTime(chain.Config().GetEIP3860TransitionTime, &header.Time) || chain.Config().IsEnabled(chain.Config().GetEIP3860Transition, header.Number) {
-		return fmt.Errorf("ethash does not support shanghai fork")
+
+	// Cancun
+	// EIP-4844: Shard Blob Txes
+	// EIP-4788: Beacon block root in the EVM
+	eip4844Enabled := chain.Config().IsEnabledByTime(chain.Config().GetEIP4844TransitionTime, &header.Time) || chain.Config().IsEnabled(chain.Config().GetEIP4844Transition, header.Number)
+	if !eip4844Enabled {
+		switch {
+		case header.ExcessBlobGas != nil:
+			return fmt.Errorf("invalid excessBlobGas: have %d, expected nil", header.ExcessBlobGas)
+		case header.BlobGasUsed != nil:
+			return fmt.Errorf("invalid blobGasUsed: have %d, expected nil", header.BlobGasUsed)
+		}
+	} else {
+		if err := eip4844.VerifyEIP4844Header(parent, header); err != nil {
+			return err
+		}
 	}
-	if chain.Config().IsEnabledByTime(chain.Config().GetEIP4844TransitionTime, &header.Time) {
-		return fmt.Errorf("ethash does not support cancun fork")
+
+	// EIP-4788: Beacon block root in the EVM
+	eip4788Enabled := chain.Config().IsEnabledByTime(chain.Config().GetEIP4788TransitionTime, &header.Time) || chain.Config().IsEnabled(chain.Config().GetEIP4788Transition, header.Number)
+	if !eip4788Enabled {
+		if header.ParentBeaconRoot != nil {
+			return fmt.Errorf("invalid parentBeaconRoot, have %#x, expected nil", header.ParentBeaconRoot)
+		}
+	} else {
+		if header.ParentBeaconRoot == nil {
+			return errors.New("header is missing beaconRoot")
+		}
 	}
+
+	// // Add some fake checks for tests
+	// if ethash.fakeDelay != nil {
+	// 	time.Sleep(*ethash.fakeDelay)
+	// }
+
 	// Verify the engine specific seal securing the block
 	if seal {
 		if err := ethash.verifySeal(chain, header, false); err != nil {
@@ -394,14 +438,14 @@ func CalcDifficulty(config ctypes.ChainConfigurator, time uint64, parent *types.
 			if exPeriodRef.Cmp(big.NewInt(int64(activated))) < 0 {
 				continue
 			}
-			fakeBlockNumber.Sub(fakeBlockNumber, dur)
+			fakeBlockNumber.Sub(fakeBlockNumber, dur.ToBig())
 		}
 		exPeriodRef.Set(fakeBlockNumber)
 	} else if config.IsEnabled(config.GetEthashEIP5133Transition, next) {
 		// calcDifficultyEip4345 is the difficulty adjustment algorithm as specified by EIP 4345.
 		// It offsets the bomb a total of 10.7M blocks.
 		fakeBlockNumber := new(big.Int)
-		delayWithOffset := new(big.Int).Sub(vars.EIP5133DifficultyBombDelay, common.Big1)
+		delayWithOffset := new(big.Int).Sub(vars.EIP5133DifficultyBombDelay.ToBig(), common.Big1)
 		if parent.Number.Cmp(delayWithOffset) >= 0 {
 			fakeBlockNumber = fakeBlockNumber.Sub(parent.Number, delayWithOffset)
 		}
@@ -410,7 +454,7 @@ func CalcDifficulty(config ctypes.ChainConfigurator, time uint64, parent *types.
 		// calcDifficultyEip4345 is the difficulty adjustment algorithm as specified by EIP 4345.
 		// It offsets the bomb a total of 10.7M blocks.
 		fakeBlockNumber := new(big.Int)
-		delayWithOffset := new(big.Int).Sub(vars.EIP4345DifficultyBombDelay, common.Big1)
+		delayWithOffset := new(big.Int).Sub(vars.EIP4345DifficultyBombDelay.ToBig(), common.Big1)
 		if parent.Number.Cmp(delayWithOffset) >= 0 {
 			fakeBlockNumber = fakeBlockNumber.Sub(parent.Number, delayWithOffset)
 		}
@@ -419,7 +463,7 @@ func CalcDifficulty(config ctypes.ChainConfigurator, time uint64, parent *types.
 		// calcDifficultyEIP3554 is the difficulty adjustment algorithm for London (December 2021).
 		// The calculation uses the Byzantium rules, but with bomb offset 9.7M.
 		fakeBlockNumber := new(big.Int)
-		delayWithOffset := new(big.Int).Sub(vars.EIP3554DifficultyBombDelay, common.Big1)
+		delayWithOffset := new(big.Int).Sub(vars.EIP3554DifficultyBombDelay.ToBig(), common.Big1)
 		if parent.Number.Cmp(delayWithOffset) >= 0 {
 			fakeBlockNumber = fakeBlockNumber.Sub(parent.Number, delayWithOffset)
 		}
@@ -428,7 +472,7 @@ func CalcDifficulty(config ctypes.ChainConfigurator, time uint64, parent *types.
 		// calcDifficultyEIP2384 is the difficulty adjustment algorithm for Muir Glacier.
 		// The calculation uses the Byzantium rules, but with bomb offset 9M.
 		fakeBlockNumber := new(big.Int)
-		delayWithOffset := new(big.Int).Sub(vars.EIP2384DifficultyBombDelay, common.Big1)
+		delayWithOffset := new(big.Int).Sub(vars.EIP2384DifficultyBombDelay.ToBig(), common.Big1)
 		if parent.Number.Cmp(delayWithOffset) >= 0 {
 			fakeBlockNumber = fakeBlockNumber.Sub(parent.Number, delayWithOffset)
 		}
@@ -443,7 +487,7 @@ func CalcDifficulty(config ctypes.ChainConfigurator, time uint64, parent *types.
 		// calculate a fake block number for the ice-age delay
 		// Specification: https://eips.ethereum.org/EIPS/eip-1234
 		fakeBlockNumber := new(big.Int)
-		delayWithOffset := new(big.Int).Sub(vars.EIP1234DifficultyBombDelay, common.Big1)
+		delayWithOffset := new(big.Int).Sub(vars.EIP1234DifficultyBombDelay.ToBig(), common.Big1)
 		if parent.Number.Cmp(delayWithOffset) >= 0 {
 			fakeBlockNumber = fakeBlockNumber.Sub(parent.Number, delayWithOffset)
 		}
@@ -456,7 +500,7 @@ func CalcDifficulty(config ctypes.ChainConfigurator, time uint64, parent *types.
 		// the block number. Thus we remove one from the delay given
 
 		fakeBlockNumber := new(big.Int)
-		delayWithOffset := new(big.Int).Sub(vars.EIP649DifficultyBombDelay, common.Big1)
+		delayWithOffset := new(big.Int).Sub(vars.EIP649DifficultyBombDelay.ToBig(), common.Big1)
 		if parent.Number.Cmp(delayWithOffset) >= 0 {
 			fakeBlockNumber = fakeBlockNumber.Sub(parent.Number, delayWithOffset)
 		}
@@ -471,8 +515,8 @@ func CalcDifficulty(config ctypes.ChainConfigurator, time uint64, parent *types.
 	//   2^(( periodRef // EDP) - 2)
 	//
 	x := new(big.Int)
-	x.Div(exPeriodRef, params.ExpDiffPeriod) // (periodRef // EDP)
-	if x.Cmp(big1) > 0 {                     // if result large enough (not in algo explicitly)
+	x.Div(exPeriodRef, params.ExpDiffPeriod.ToBig()) // (periodRef // EDP)
+	if x.Cmp(big1) > 0 {                             // if result large enough (not in algo explicitly)
 		x.Sub(x, big2)      // - 2
 		x.Exp(big2, x, nil) // 2^
 	} else {
@@ -618,6 +662,15 @@ func (ethash *Ethash) SealHash(header *types.Header) (hash common.Hash) {
 	}
 	if header.WithdrawalsHash != nil {
 		panic("withdrawal hash set on ethash")
+	}
+	if header.ExcessBlobGas != nil {
+		panic("excess blob gas set on ethash")
+	}
+	if header.BlobGasUsed != nil {
+		panic("blob gas used set on ethash")
+	}
+	if header.ParentBeaconRoot != nil {
+		panic("parent beacon root set on ethash")
 	}
 	rlp.Encode(hasher, enc)
 	hasher.Sum(hash[:0])

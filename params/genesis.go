@@ -21,7 +21,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params/types/coregeth"
 	"github.com/ethereum/go-ethereum/params/types/ctypes"
 	"github.com/ethereum/go-ethereum/params/types/genesisT"
@@ -37,7 +36,7 @@ func DefaultGenesisBlock() *genesisT.Genesis {
 		ExtraData:  hexutil.MustDecode("0x11bbe8db4e347b4e8c937c1c8370e4b5ed33adb3db69cbdb7a38e1e50b1b82fa"),
 		GasLimit:   5000,
 		Difficulty: big.NewInt(17179869184),
-		Alloc:      genesisT.DecodePreAlloc(MainnetAllocData),
+		Alloc:      genesisT.DecodePreAlloc(mainnetAllocData),
 	}
 }
 
@@ -50,7 +49,7 @@ func DefaultSepoliaGenesisBlock() *genesisT.Genesis {
 		GasLimit:   30000000,
 		Difficulty: big.NewInt(131072),
 		Timestamp:  1633267481,
-		Alloc:      genesisT.DecodePreAlloc(SepoliaAllocData),
+		Alloc:      genesisT.DecodePreAlloc(sepoliaAllocData),
 	}
 }
 
@@ -62,20 +61,32 @@ func DefaultGoerliGenesisBlock() *genesisT.Genesis {
 		ExtraData:  hexutil.MustDecode("0x22466c6578692069732061207468696e6722202d204166726900000000000000e0a2bd4258d2768837baa26a28fe71dc079f84c70000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
 		GasLimit:   10485760,
 		Difficulty: big.NewInt(1),
-		Alloc:      genesisT.DecodePreAlloc(GoerliAllocData),
+		Alloc:      genesisT.DecodePreAlloc(goerliAllocData),
+	}
+}
+
+// DefaultHoleskyGenesisBlock returns the Holesky network genesis block.
+func DefaultHoleskyGenesisBlock() *genesisT.Genesis {
+	return &genesisT.Genesis{
+		Config:     HoleskyChainConfig,
+		Nonce:      0x1234,
+		GasLimit:   0x17d7840,
+		Difficulty: big.NewInt(0x01),
+		Timestamp:  1695902100,
+		Alloc:      genesisT.DecodePreAlloc(holeskyAllocData),
 	}
 }
 
 // DeveloperGenesisBlock returns the 'geth --dev' genesis block. Note, this must
 // be seeded with the
-func DeveloperGenesisBlock(gasLimit uint64, faucet common.Address, useEthash bool) *genesisT.Genesis {
+func DeveloperGenesisBlock(gasLimit uint64, faucet *common.Address, useEthash bool) *genesisT.Genesis {
 	if !useEthash {
 		// Make a copy to avoid unpredicted contamination.
 		config := &goethereum.ChainConfig{}
 		*config = *AllDevChainProtocolChanges
 
 		// Assemble and return the genesis with the precompiles and faucet pre-funded
-		return &genesisT.Genesis{
+		genesis := &genesisT.Genesis{
 			Config:     config,
 			GasLimit:   gasLimit,
 			BaseFee:    big.NewInt(vars.InitialBaseFee),
@@ -90,9 +101,12 @@ func DeveloperGenesisBlock(gasLimit uint64, faucet common.Address, useEthash boo
 				common.BytesToAddress([]byte{7}): {Balance: big.NewInt(1)}, // ECScalarMul
 				common.BytesToAddress([]byte{8}): {Balance: big.NewInt(1)}, // ECPairing
 				common.BytesToAddress([]byte{9}): {Balance: big.NewInt(1)}, // BLAKE2b
-				faucet:                           {Balance: new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 256), big.NewInt(9))},
 			},
 		}
+		if faucet != nil {
+			genesis.Alloc[*faucet] = genesisT.GenesisAccount{Balance: new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 256), big.NewInt(9))}
+		}
+		return genesis
 	}
 
 	// Use an ETC equivalent of AllEthashProtocolChanges.
@@ -141,9 +155,8 @@ func DeveloperGenesisBlock(gasLimit uint64, faucet common.Address, useEthash boo
 	}
 
 	// Assemble and return the genesis with the precompiles and faucet pre-funded
-	return &genesisT.Genesis{
+	genesis := &genesisT.Genesis{
 		Config:     config,
-		ExtraData:  append(append(make([]byte, 32), faucet[:]...), make([]byte, crypto.SignatureLength)...),
 		GasLimit:   6283185,
 		Difficulty: vars.MinimumDifficulty,
 		BaseFee:    big.NewInt(vars.InitialBaseFee),
@@ -156,7 +169,10 @@ func DeveloperGenesisBlock(gasLimit uint64, faucet common.Address, useEthash boo
 			common.BytesToAddress([]byte{6}): {Balance: big.NewInt(1)}, // ECAdd
 			common.BytesToAddress([]byte{7}): {Balance: big.NewInt(1)}, // ECScalarMul
 			common.BytesToAddress([]byte{8}): {Balance: big.NewInt(1)}, // ECPairing
-			faucet:                           {Balance: new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 256), big.NewInt(9))},
 		},
 	}
+	if faucet != nil {
+		genesis.Alloc[*faucet] = genesisT.GenesisAccount{Balance: new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 256), big.NewInt(9))}
+	}
+	return genesis
 }

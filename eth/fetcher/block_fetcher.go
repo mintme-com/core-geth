@@ -32,6 +32,13 @@ import (
 	"github.com/ethereum/go-ethereum/trie"
 )
 
+// InsertChainEvent is posted by the handler when a propagated block is successfully imported.
+// The block may have been propagated via announcement (hashes) or broadcast (full block, via its miner).
+// The event should not be posted if the insert function returns any error.
+type InsertChainEvent struct {
+	Blocks types.Blocks
+}
+
 const (
 	lightTimeout  = time.Millisecond       // Time allowance before an announced header is explicitly requested
 	arriveTimeout = 500 * time.Millisecond // Time allowance before an announced block/transaction is explicitly requested
@@ -483,7 +490,7 @@ func (f *BlockFetcher) loop() {
 							select {
 							case res := <-resCh:
 								res.Done <- nil
-								f.FilterHeaders(peer, *res.Res.(*eth.BlockHeadersPacket), time.Now().Add(res.Time))
+								f.FilterHeaders(peer, *res.Res.(*eth.BlockHeadersRequest), time.Now())
 
 							case <-timeout.C:
 								// The peer didn't respond in time. The request
@@ -541,7 +548,7 @@ func (f *BlockFetcher) loop() {
 					case res := <-resCh:
 						res.Done <- nil
 						// Ignoring withdrawals here, since the block fetcher is not used post-merge.
-						txs, uncles, _ := res.Res.(*eth.BlockBodiesPacket).Unpack()
+						txs, uncles, _ := res.Res.(*eth.BlockBodiesResponse).Unpack()
 						f.FilterBodies(peer, txs, uncles, time.Now())
 
 					case <-timeout.C:

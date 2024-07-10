@@ -18,18 +18,19 @@ package tests
 
 import (
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/vm"
 )
 
 // RunSetPost runs the state subtest for a given config, and writes the resulting
 // state to the corresponding subtest post field.
 func (t *StateTest) RunSetPost(subtest StateSubtest, vmconfig vm.Config) error {
-	_, statedb, root, err := t.RunNoVerify(subtest, vmconfig, false)
+	state, root, err := t.RunNoVerify(subtest, vmconfig, false, rawdb.HashScheme)
 	if err != nil {
 		return err
 	}
 	t.json.Post[subtest.Fork][subtest.Index].Root = common.UnprefixedHash(root)
-	t.json.Post[subtest.Fork][subtest.Index].Logs = common.UnprefixedHash(rlpHash(statedb.Logs()))
+	t.json.Post[subtest.Fork][subtest.Index].Logs = common.UnprefixedHash(rlpHash(state.StateDB.Logs()))
 	t.json.Post[subtest.Fork][subtest.Index].filled = true
 	return nil
 }

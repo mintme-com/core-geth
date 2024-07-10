@@ -16,32 +16,37 @@
 
 package vars
 
-import "math/big"
+import (
+	"math/big"
+
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/holiman/uint256"
+)
 
 var (
-	FrontierBlockReward = big.NewInt(5e+18) // Block reward in wei for successfully mining a block
-	EIP649FBlockReward  = big.NewInt(3e+18) // Block reward in wei for successfully mining a block upward from Byzantium
-	EIP1234FBlockReward = big.NewInt(2e+18) // Block reward in wei for successfully mining a block upward from Constantinople
+	FrontierBlockReward = uint256.NewInt(5e+18) // Block reward in wei for successfully mining a block
+	EIP649FBlockReward  = uint256.NewInt(3e+18) // Block reward in wei for successfully mining a block upward from Byzantium
+	EIP1234FBlockReward = uint256.NewInt(2e+18) // Block reward in wei for successfully mining a block upward from Constantinople
 
 	// Values represent TOTAL delays, per specs
 	// https://github.com/ethereum/EIPs/blob/master/EIPS/eip-649.md
-	EIP649DifficultyBombDelay = big.NewInt(3000000)
+	EIP649DifficultyBombDelay = uint256.NewInt(3000000)
 	// https://github.com/ethereum/EIPs/blob/master/EIPS/eip-1234.md
-	EIP1234DifficultyBombDelay = big.NewInt(5000000)
+	EIP1234DifficultyBombDelay = uint256.NewInt(5000000)
 
-	EIP2384DifficultyBombDelay = big.NewInt(9000000)
+	EIP2384DifficultyBombDelay = uint256.NewInt(9000000)
 	// https://github.com/ethereum/EIPs/blob/master/EIPS/eip-3554.md
-	EIP3554DifficultyBombDelay = big.NewInt(9700000)
+	EIP3554DifficultyBombDelay = uint256.NewInt(9700000)
 	// https://github.com/ethereum/EIPs/blob/master/EIPS/eip-4345.md
-	EIP4345DifficultyBombDelay = big.NewInt(10700000)
+	EIP4345DifficultyBombDelay = uint256.NewInt(10700000)
 	// https://github.com/ethereum/EIPs/blob/master/EIPS/eip-5133.md
-	EIP5133DifficultyBombDelay = big.NewInt(11_400_000)
+	EIP5133DifficultyBombDelay = uint256.NewInt(11_400_000)
 )
 
 var (
 	// SupportedProtocolVersions are the supported versions of the `eth` protocol (first
 	// is primary).
-	SupportedProtocolVersions = []uint{68, 67, 66}
+	SupportedProtocolVersions = []uint{68}
 
 	// DefaultProtocolVersions are the protocol version defaults.
 	DefaultProtocolVersions = SupportedProtocolVersions
@@ -194,13 +199,13 @@ const (
 
 	BlobTxBytesPerFieldElement         = 32      // Size in bytes of a field element
 	BlobTxFieldElementsPerBlob         = 4096    // Number of field elements stored in a single data blob
-	BlobTxHashVersion                  = 0x01    // Version byte of the commitment hash
-	BlobTxMaxBlobGasPerBlock           = 1 << 19 // Maximum consumable blob gas for data blobs per block
-	BlobTxTargetBlobGasPerBlock        = 1 << 18 // Target consumable blob gas for data blobs per block (for 1559-like pricing)
 	BlobTxBlobGasPerBlob               = 1 << 17 // Gas consumption of a single data blob (== blob byte size)
 	BlobTxMinBlobGasprice              = 1       // Minimum gas price for data blobs
-	BlobTxBlobGaspriceUpdateFraction   = 2225652 // Controls the maximum rate of change for blob gas price
+	BlobTxBlobGaspriceUpdateFraction   = 3338477 // Controls the maximum rate of change for blob gas price
 	BlobTxPointEvaluationPrecompileGas = 50000   // Gas price for the point evaluation precompile.
+
+	BlobTxTargetBlobGasPerBlock = 3 * BlobTxBlobGasPerBlob // Target consumable blob gas for data blobs per block (for 1559-like pricing)
+	MaxBlobGasPerBlock          = 6 * BlobTxBlobGasPerBlob // Maximum consumable blob gas for data blobs per block
 )
 
 // Gas discount table for BLS12-381 G1 and G2 multi exponentiation operations
@@ -213,4 +218,9 @@ var (
 	DurationLimit                     = big.NewInt(13)     // The decision boundary on the blocktime duration used to determine whether difficulty should go up or not.
 	EIP2DifficultyIncrementDivisor    = big.NewInt(10)     // Is related to the equilibrium block intervals for the Homestead era difficulty evolution, redefines the value in (YP:43), originally 10 = 0xa
 	EIP100FDifficultyIncrementDivisor = big.NewInt(9)
+
+	// BeaconRootsStorageAddress is the address where historical beacon roots are stored as per EIP-4788
+	BeaconRootsStorageAddress = common.HexToAddress("0x000F3df6D732807Ef1319fB7B8bB8522d0Beac02")
+	// SystemAddress is where the system-transaction is sent from as per EIP-4788
+	SystemAddress common.Address = common.HexToAddress("0xfffffffffffffffffffffffffffffffffffffffe")
 )

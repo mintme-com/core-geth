@@ -99,7 +99,8 @@ type ChainConfig struct {
 	ECIP1080Transition *big.Int `json:"-"`
 
 	// Cache types for use with testing, but will not show up in config API.
-	ecbp1100Transition *big.Int
+	ecbp1100Transition           *big.Int
+	ecbp1100DeactivateTransition *big.Int
 
 	Lyra2NonceTransitionBlock *big.Int `json:"lyra2NonceTransitionBlock,omitempty"`
 }
@@ -143,7 +144,7 @@ func (c *ChainConfig) String() string {
 	}
 	banner += "\n"
 	banner += fmt.Sprintf(`_ Block-based Forks: %v`, confp.BlockForks(c))
-	banner += fmt.Sprintf(`_ Time-based Forks: %v`, confp.TimeForks(c))
+	banner += fmt.Sprintf(`_ Time-based Forks: %v`, confp.TimeForks(c, 0))
 	banner += fmt.Sprintf(`_ TTD: %v`, c.GetEthashTerminalTotalDifficulty())
 
 	// // Create a list of forks with a short description of them. Forks that only

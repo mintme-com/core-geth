@@ -18,6 +18,7 @@ import (
 	"github.com/ethereum/go-ethereum/params/vars"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
+	"github.com/holiman/uint256"
 	"golang.org/x/crypto/sha3"
 )
 
@@ -394,7 +395,7 @@ func (lyra2 *Lyra2) FinalizeAndAssemble(chain consensus.ChainHeaderReader, heade
 	header.Root = state.IntermediateRoot(chain.Config().IsEnabled(chain.Config().GetEIP161dTransition, header.Number))
 
 	// Header seems complete, assemble into a block and return
-	return types.NewBlock(header, txs, uncles, receipts, new(trie.Trie)), nil
+	return types.NewBlock(header, txs, uncles, receipts, trie.NewStackTrie(nil)), nil
 }
 
 // SealHash returns the hash of a block prior to it being sealed.
@@ -481,7 +482,7 @@ func accumulateRewards(config ctypes.ChainConfigurator, state *state.StateDB, he
 	minerReward := GetBlockWinnerRewardByEra(era)
 	uncleReward := getEraUncleBlockReward(minerReward)
 	for _, uncle := range uncles {
-		state.AddBalance(uncle.Coinbase, uncleReward)
+		state.AddBalance(uncle.Coinbase, uint256.MustFromBig(uncleReward))
 	}
-	state.AddBalance(header.Coinbase, minerReward)
+	state.AddBalance(header.Coinbase, uint256.MustFromBig(minerReward))
 }

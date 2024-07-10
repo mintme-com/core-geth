@@ -35,6 +35,7 @@ import (
 	"github.com/ethereum/go-ethereum/params/types/genesisT"
 	"github.com/ethereum/go-ethereum/params/vars"
 	"github.com/ethereum/go-ethereum/trie"
+	"github.com/ethereum/go-ethereum/triedb"
 )
 
 var (
@@ -46,7 +47,7 @@ var (
 		Alloc:   genesisT.GenesisAlloc{testAddress: {Balance: big.NewInt(1000000000000000)}},
 		BaseFee: big.NewInt(vars.InitialBaseFee),
 	}
-	genesis      = core.MustCommitGenesis(testdb, gspec)
+	genesis      = core.MustCommitGenesis(testdb, triedb.NewDatabase(testdb, triedb.HashDefaults), gspec)
 	unknownBlock = types.NewBlock(&types.Header{Root: types.EmptyRootHash, GasLimit: vars.GenesisGasLimit, BaseFee: big.NewInt(vars.InitialBaseFee)}, nil, nil, nil, trie.NewStackTrie(nil))
 )
 
@@ -215,7 +216,7 @@ func (f *fetcherTester) makeHeaderFetcher(peer string, blocks map[common.Hash]*t
 		}
 		res := &eth.Response{
 			Req:  req,
-			Res:  (*eth.BlockHeadersPacket)(&headers),
+			Res:  (*eth.BlockHeadersRequest)(&headers),
 			Time: drift,
 			Done: make(chan error, 1), // Ignore the returned status
 		}
@@ -257,7 +258,7 @@ func (f *fetcherTester) makeBodyFetcher(peer string, blocks map[common.Hash]*typ
 		}
 		res := &eth.Response{
 			Req:  req,
-			Res:  (*eth.BlockBodiesPacket)(&bodies),
+			Res:  (*eth.BlockBodiesResponse)(&bodies),
 			Time: drift,
 			Done: make(chan error, 1), // Ignore the returned status
 		}

@@ -114,7 +114,7 @@ func (c *cloudflareClient) uploadRecords(name string, records map[string]string)
 	records = lrecords
 
 	log.Info(fmt.Sprintf("Retrieving existing TXT records on %s", name))
-	entries, err := c.DNSRecords(context.Background(), c.zoneID, cloudflare.DNSRecord{Type: "TXT"})
+	entries, _, err := c.ListDNSRecords(context.Background(), cloudflare.ZoneIdentifier(c.zoneID), cloudflare.ListDNSRecordsParams{Type: "TXT"})
 	if err != nil {
 		return err
 	}
@@ -125,30 +125,66 @@ func (c *cloudflareClient) uploadRecords(name string, records map[string]string)
 		}
 		existing[strings.ToLower(entry.Name)] = entry
 	}
+	// if the record exists on cloudflare, but is not in our local records, it is stale
+	stales := make(map[string]cloudflare.DNSRecord)
+	for path, entry := range existing {
+		if _, ok := records[path]; !ok {
+			stales[path] = entry
+		}
+	}
+	// firstCloudflareRecord is a helper function returning the first path:record value from a path:DNSRecord map.
+	firstCloudflareRecord := func(cfPathRecordMap map[string]cloudflare.DNSRecord) (string, cloudflare.DNSRecord) {
+		for path, entry := range cfPathRecordMap {
+			return path, entry
+		}
+		return "", cloudflare.DNSRecord{}
+	}
 
 	// Iterate over the new records and inject anything missing.
 	log.Info("Updating DNS entries")
 	created := 0
 	updated := 0
 	skipped := 0
+	deleted := 0
 	for path, val := range records {
 		old, exists := existing[path]
 		if !exists {
-			// Entry is unknown, push a new one to Cloudflare.
+			// Entry is unknown, push a new one to Cloudflare after removing first stale record, if any.
+			// We delete any one stale record before creating a new one to avoid exceeding the Cloudflare
+			// record quota.
+			if path, entry := firstCloudflareRecord(stales); path != "" {
+				log.Debug(fmt.Sprintf("Deleting %s = %q", path, entry.Content))
+				deleted++
+				if err := c.DeleteDNSRecord(context.Background(), cloudflare.ZoneIdentifier(c.zoneID), entry.ID); err != nil {
+					return fmt.Errorf("failed to delete %s: %v", path, err)
+				}
+				delete(stales, path)
+			}
 			log.Debug(fmt.Sprintf("Creating %s = %q", path, val))
 			created++
 			ttl := rootTTL
 			if path != name {
 				ttl = treeNodeTTLCloudflare // Max TTL permitted by Cloudflare
 			}
-			record := cloudflare.DNSRecord{Type: "TXT", Name: path, Content: val, TTL: ttl}
-			_, err = c.CreateDNSRecord(context.Background(), c.zoneID, record)
+			record := cloudflare.CreateDNSRecordParams{Type: "TXT", Name: path, Content: val, TTL: ttl}
+			_, err = c.CreateDNSRecord(context.Background(), cloudflare.ZoneIdentifier(c.zoneID), record)
 		} else if old.Content != val {
 			// Entry already exists, only change its content.
 			log.Info(fmt.Sprintf("Updating %s from %q to %q", path, old.Content, val))
 			updated++
-			old.Content = val
-			err = c.UpdateDNSRecord(context.Background(), c.zoneID, old.ID, old)
+
+			record := cloudflare.UpdateDNSRecordParams{
+				Type:     old.Type,
+				Name:     old.Name,
+				Content:  val,
+				Data:     old.Data,
+				ID:       old.ID,
+				Priority: old.Priority,
+				TTL:      old.TTL,
+				Proxied:  old.Proxied,
+				Tags:     old.Tags,
+			}
+			_, err = c.UpdateDNSRecord(context.Background(), cloudflare.ZoneIdentifier(c.zoneID), record)
 		} else {
 			skipped++
 			log.Debug(fmt.Sprintf("Skipping %s = %q", path, val))
@@ -157,21 +193,17 @@ func (c *cloudflareClient) uploadRecords(name string, records map[string]string)
 			return fmt.Errorf("failed to publish %s: %v", path, err)
 		}
 	}
-	log.Info("Updated DNS entries", "new", created, "updated", updated, "untouched", skipped)
-	// Iterate over the old records and delete anything stale.
-	deleted := 0
+	log.Info("Updated DNS entries", "new", created, "updated", updated, "untouched", skipped, "deleted", deleted)
+	// Iterate over the old records and delete anything left stale.
+	deleted = 0
 	log.Info("Deleting stale DNS entries")
-	for path, entry := range existing {
-		if _, ok := records[path]; ok {
-			continue
-		}
-		// Stale entry, nuke it.
+	for path, entry := range stales {
 		log.Debug(fmt.Sprintf("Deleting %s = %q", path, entry.Content))
 		deleted++
-		if err := c.DeleteDNSRecord(context.Background(), c.zoneID, entry.ID); err != nil {
+		if err := c.DeleteDNSRecord(context.Background(), cloudflare.ZoneIdentifier(c.zoneID), entry.ID); err != nil {
 			return fmt.Errorf("failed to delete %s: %v", path, err)
 		}
 	}
-	log.Info("Deleted stale DNS entries", "count", deleted)
+	log.Info("Deleted remaining stale DNS entries", "count", deleted)
 	return nil
 }

@@ -24,6 +24,7 @@ import (
 	"github.com/ethereum/go-ethereum/params/types/ctypes"
 	"github.com/ethereum/go-ethereum/params/types/genesisT"
 	"github.com/ethereum/go-ethereum/params/vars"
+	"github.com/holiman/uint256"
 )
 
 var (
@@ -81,8 +82,9 @@ var (
 		EIP2028FBlock: big.NewInt(10_500_839),
 		EIP2200FBlock: big.NewInt(10_500_839), // RePetersburg (=~ re-1283)
 
-		ECBP1100FBlock: big.NewInt(11_380_000), // ETA 09 Oct 2020
-		ECIP1099FBlock: big.NewInt(11_700_000), // Etchash (DAG size limit)
+		ECBP1100FBlock:           big.NewInt(11_380_000), // ETA 09 Oct 2020
+		ECBP1100DeactivateFBlock: big.NewInt(19_250_000), // ETA 31 Jan 2023 (== Spiral hard fork)
+		ECIP1099FBlock:           big.NewInt(11_700_000), // Etchash (DAG size limit)
 
 		// Berlin eq, aka Magneto
 		EIP2565FBlock: big.NewInt(13_189_133),
@@ -96,11 +98,11 @@ var (
 
 		// Spiral, aka Shanghai (partially)
 		// EIP4399FBlock: nil, // Supplant DIFFICULTY with PREVRANDAO. ETC does not spec 4399 because it's still PoW, and 4399 is only applicable for the PoS system.
-		EIP3651FBlock: nil, // Warm COINBASE (gas reprice)
-		EIP3855FBlock: nil, // PUSH0 instruction
-		EIP3860FBlock: nil, // Limit and meter initcode
+		EIP3651FBlock: big.NewInt(19_250_000), // Warm COINBASE (gas reprice)
+		EIP3855FBlock: big.NewInt(19_250_000), // PUSH0 instruction
+		EIP3860FBlock: big.NewInt(19_250_000), // Limit and meter initcode
 		// EIP4895FBlock: nil, // Beacon chain push withdrawals as operations
-		EIP6049FBlock: nil, // Deprecate SELFDESTRUCT (noop)
+		EIP6049FBlock: big.NewInt(19_250_000), // Deprecate SELFDESTRUCT (noop)
 
 		RequireBlockHashes: map[uint64]common.Hash{
 			1920000: common.HexToHash("0x94365e3a8c0b35089c1d1195081fe7489b528a84b22199c916180db8b28ade7f"),
@@ -108,9 +110,9 @@ var (
 		},
 	}
 
-	DisinflationRateQuotient = big.NewInt(4)      // Disinflation rate quotient for ECIP1017
-	DisinflationRateDivisor  = big.NewInt(5)      // Disinflation rate divisor for ECIP1017
-	ExpDiffPeriod            = big.NewInt(100000) // Exponential diff period for diff bomb & ECIP1010
+	DisinflationRateQuotient = uint256.NewInt(4)      // Disinflation rate quotient for ECIP1017
+	DisinflationRateDivisor  = uint256.NewInt(5)      // Disinflation rate divisor for ECIP1017
+	ExpDiffPeriod            = uint256.NewInt(100000) // Exponential diff period for diff bomb & ECIP1010
 
 	MessNetConfig = &coregeth.CoreGethChainConfig{
 		NetworkID:                 1,

@@ -19,12 +19,13 @@ package main
 import (
 	"errors"
 	"fmt"
-	"net"
+	"net/netip"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/forkid"
 	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/ethereum/go-ethereum/params"
@@ -204,11 +205,11 @@ func trueFilter(args []string) (nodeFilter, error) {
 }
 
 func ipFilter(args []string) (nodeFilter, error) {
-	_, cidr, err := net.ParseCIDR(args[0])
+	prefix, err := netip.ParsePrefix(args[0])
 	if err != nil {
 		return nil, err
 	}
-	f := func(n nodeJSON) bool { return cidr.Contains(n.N.IP()) }
+	f := func(n nodeJSON) bool { return prefix.Contains(n.N.IPAddr()) }
 	return f, nil
 }
 
@@ -228,17 +229,23 @@ func ethFilter(args []string) (nodeFilter, error) {
 	var filter forkid.Filter
 	switch args[0] {
 	case "mainnet":
-		filter = forkid.NewStaticFilter(params.MainnetChainConfig, params.MainnetGenesisHash)
+		gb := core.GenesisToBlock(params.DefaultGenesisBlock(), nil)
+		filter = forkid.NewStaticFilter(params.MainnetChainConfig, gb)
 	case "goerli":
-		filter = forkid.NewStaticFilter(params.GoerliChainConfig, params.GoerliGenesisHash)
+		gb := core.GenesisToBlock(params.DefaultGoerliGenesisBlock(), nil)
+		filter = forkid.NewStaticFilter(params.GoerliChainConfig, gb)
 	case "sepolia":
-		filter = forkid.NewStaticFilter(params.SepoliaChainConfig, params.SepoliaGenesisHash)
+		gb := core.GenesisToBlock(params.DefaultSepoliaGenesisBlock(), nil)
+		filter = forkid.NewStaticFilter(params.SepoliaChainConfig, gb)
 	case "classic":
-		filter = forkid.NewStaticFilter(params.ClassicChainConfig, params.MainnetGenesisHash)
+		gb := core.GenesisToBlock(params.DefaultGenesisBlock(), nil)
+		filter = forkid.NewStaticFilter(params.ClassicChainConfig, gb)
 	case "mordor":
-		filter = forkid.NewStaticFilter(params.MordorChainConfig, params.MordorGenesisHash)
+		gb := core.GenesisToBlock(params.DefaultMordorGenesisBlock(), nil)
+		filter = forkid.NewStaticFilter(params.MordorChainConfig, gb)
 	case "mintme":
-		filter = forkid.NewStaticFilter(params.MintMeChainConfig, params.MintMeGenesisHash)
+		gb := core.GenesisToBlock(params.DefaultMintMeGenesisBlock(), nil)
+		filter = forkid.NewStaticFilter(params.MintMeChainConfig, gb)
 	default:
 		return nil, fmt.Errorf("unknown network %q", args[0])
 	}

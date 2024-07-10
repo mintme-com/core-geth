@@ -19,6 +19,7 @@ package forkid
 import (
 	"bytes"
 	"fmt"
+	"hash/crc32"
 	"math"
 	"math/big"
 	"os"
@@ -27,10 +28,13 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/params/confp"
 	"github.com/ethereum/go-ethereum/params/types/coregeth"
 	"github.com/ethereum/go-ethereum/params/types/ctypes"
+	"github.com/ethereum/go-ethereum/params/types/goethereum"
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
@@ -45,14 +49,14 @@ func TestCreation(t *testing.T) {
 	tests := []struct {
 		name    string
 		config  ctypes.ChainConfigurator
-		genesis common.Hash
+		genesis *types.Block
 		cases   []testcase
 	}{
 		// Mainnet test cases
 		{
 			"mainnet",
 			params.MainnetChainConfig,
-			params.MainnetGenesisHash,
+			core.GenesisToBlock(params.DefaultGenesisBlock(), nil),
 			[]testcase{
 				{0, 0, ID{Hash: checksumToBytes(0xfc64ec04), Next: 1150000}},                    // Unsynced
 				{1149999, 0, ID{Hash: checksumToBytes(0xfc64ec04), Next: 1150000}},              // Last Frontier block
@@ -80,15 +84,17 @@ func TestCreation(t *testing.T) {
 				{15049999, 0, ID{Hash: checksumToBytes(0x20c327fc), Next: 15050000}},            // Last Arrow Glacier block
 				{15050000, 0, ID{Hash: checksumToBytes(0xf0afd0e3), Next: 1681338455}},          // First Gray Glacier block
 				{20000000, 1681338454, ID{Hash: checksumToBytes(0xf0afd0e3), Next: 1681338455}}, // Last Gray Glacier block
-				{20000000, 1681338455, ID{Hash: checksumToBytes(0xdce96c2d), Next: 0}},          // First Shanghai block
-				{30000000, 2000000000, ID{Hash: checksumToBytes(0xdce96c2d), Next: 0}},          // Future Shanghai block
+				{20000000, 1681338455, ID{Hash: checksumToBytes(0xdce96c2d), Next: 1710338135}}, // First Shanghai block
+				{30000000, 1710338134, ID{Hash: checksumToBytes(0xdce96c2d), Next: 1710338135}}, // Last Shanghai block
+				{40000000, 1710338135, ID{Hash: checksumToBytes(0x9f3d2254), Next: 0}},          // First Cancun block
+				{50000000, 2000000000, ID{Hash: checksumToBytes(0x9f3d2254), Next: 0}},          // Future Cancun block
 			},
 		},
 		// Goerli test cases
 		{
 			"goerli",
 			params.GoerliChainConfig,
-			params.GoerliGenesisHash,
+			core.GenesisToBlock(params.DefaultGoerliGenesisBlock(), nil),
 			[]testcase{
 				{0, 0, ID{Hash: checksumToBytes(0xa3f5ab08), Next: 1561651}},                   // Unsynced, last Frontier, Homestead, Tangerine, Spurious, Byzantium, Constantinople and first Petersburg block
 				{1561650, 0, ID{Hash: checksumToBytes(0xa3f5ab08), Next: 1561651}},             // Last Petersburg block
@@ -98,27 +104,46 @@ func TestCreation(t *testing.T) {
 				{5000000, 0, ID{Hash: checksumToBytes(0x757a1c47), Next: 5062605}},             // Last Berlin block
 				{5062605, 0, ID{Hash: checksumToBytes(0xB8C6299D), Next: 1678832736}},          // First London block
 				{6000000, 1678832735, ID{Hash: checksumToBytes(0xB8C6299D), Next: 1678832736}}, // Last London block
-				{6000001, 1678832736, ID{Hash: checksumToBytes(0xf9843abf), Next: 0}},          // First Shanghai block
-				{6500000, 2678832736, ID{Hash: checksumToBytes(0xf9843abf), Next: 0}},          // Future Shanghai block
+				{6000001, 1678832736, ID{Hash: checksumToBytes(0xf9843abf), Next: 1705473120}}, // First Shanghai block
+				{6500002, 1705473119, ID{Hash: checksumToBytes(0xf9843abf), Next: 1705473120}}, // Last Shanghai block
+				{6500003, 1705473120, ID{Hash: checksumToBytes(0x70cc14e2), Next: 0}},          // First Cancun block
+				{6500003, 2705473120, ID{Hash: checksumToBytes(0x70cc14e2), Next: 0}},          // Future Cancun block
 			},
 		},
 		// Sepolia test cases
 		{
 			"sepolia",
 			params.SepoliaChainConfig,
-			params.SepoliaGenesisHash,
+			core.GenesisToBlock(params.DefaultSepoliaGenesisBlock(), nil),
 			[]testcase{
 				{0, 0, ID{Hash: checksumToBytes(0xfe3366e7), Next: 1735371}},                   // Unsynced, last Frontier, Homestead, Tangerine, Spurious, Byzantium, Constantinople, Petersburg, Istanbul, Berlin and first London block
 				{1735370, 0, ID{Hash: checksumToBytes(0xfe3366e7), Next: 1735371}},             // Last London block
 				{1735371, 0, ID{Hash: checksumToBytes(0xb96cbd13), Next: 1677557088}},          // First MergeNetsplit block
 				{1735372, 1677557087, ID{Hash: checksumToBytes(0xb96cbd13), Next: 1677557088}}, // Last MergeNetsplit block
-				{1735372, 1677557088, ID{Hash: checksumToBytes(0xf7f9bc08), Next: 0}},          // First Shanghai block
+				{1735372, 1677557088, ID{Hash: checksumToBytes(0xf7f9bc08), Next: 1706655072}}, // First Shanghai block
+				{1735372, 1706655071, ID{Hash: checksumToBytes(0xf7f9bc08), Next: 1706655072}}, // Last Shanghai block
+				{1735372, 1706655072, ID{Hash: checksumToBytes(0x88cf81d9), Next: 0}},          // First Cancun block
+				{1735372, 2706655072, ID{Hash: checksumToBytes(0x88cf81d9), Next: 0}},          // Future Cancun block
+			},
+		},
+		// Holesky test cases
+		{
+			"holesky",
+			params.HoleskyChainConfig,
+			core.GenesisToBlock(params.DefaultHoleskyGenesisBlock(), nil),
+			[]testcase{
+				{0, 0, ID{Hash: checksumToBytes(0xc61a6098), Next: 1696000704}},            // Unsynced, last Frontier, Homestead, Tangerine, Spurious, Byzantium, Constantinople, Petersburg, Istanbul, Berlin, London, Paris block
+				{123, 0, ID{Hash: checksumToBytes(0xc61a6098), Next: 1696000704}},          // First MergeNetsplit block
+				{123, 1696000704, ID{Hash: checksumToBytes(0xfd4f016b), Next: 1707305664}}, // First Shanghai block
+				{123, 1707305663, ID{Hash: checksumToBytes(0xfd4f016b), Next: 1707305664}}, // Last Shanghai block
+				{123, 1707305664, ID{Hash: checksumToBytes(0x9b192ad0), Next: 0}},          // First Cancun block
+				{123, 2707305664, ID{Hash: checksumToBytes(0x9b192ad0), Next: 0}},          // Future Cancun block
 			},
 		},
 		{
 			"classic",
 			params.ClassicChainConfig,
-			params.MainnetGenesisHash,
+			core.GenesisToBlock(params.DefaultClassicGenesisBlock(), nil),
 			[]testcase{
 				{0, 0, ID{Hash: checksumToBytes(0xfc64ec04), Next: 1150000}},
 				{1, 0, ID{Hash: checksumToBytes(0xfc64ec04), Next: 1150000}},
@@ -157,14 +182,17 @@ func TestCreation(t *testing.T) {
 				{13_189_133, 0, ID{Hash: checksumToBytes(0x0f6bf187), Next: 14_525_000}},
 				{13_189_134, 0, ID{Hash: checksumToBytes(0x0f6bf187), Next: 14_525_000}},
 				{14_524_999, 0, ID{Hash: checksumToBytes(0x0f6bf187), Next: 14_525_000}},
-				{14_525_000, 0, ID{Hash: checksumToBytes(0x7fd1bb25), Next: 0}},
-				{14_525_001, 0, ID{Hash: checksumToBytes(0x7fd1bb25), Next: 0}},
+				{14_525_000, 0, ID{Hash: checksumToBytes(0x7fd1bb25), Next: 19_250_000}},
+				{14_525_001, 0, ID{Hash: checksumToBytes(0x7fd1bb25), Next: 19_250_000}},
+				{19_249_999, 0, ID{Hash: checksumToBytes(0x7fd1bb25), Next: 19_250_000}},
+				{19_250_000, 0, ID{Hash: checksumToBytes(0xbe46d57c), Next: 0}},
+				{19_250_001, 0, ID{Hash: checksumToBytes(0xbe46d57c), Next: 0}},
 			},
 		},
 		{
 			"mordor",
 			params.MordorChainConfig,
-			params.MordorGenesisHash,
+			core.GenesisToBlock(params.DefaultMordorGenesisBlock(), nil),
 			[]testcase{
 				{0, 0, ID{Hash: checksumToBytes(0x175782aa), Next: 301243}},
 				{1, 0, ID{Hash: checksumToBytes(0x175782aa), Next: 301243}},
@@ -184,15 +212,18 @@ func TestCreation(t *testing.T) {
 				{3_985_893, 0, ID{Hash: checksumToBytes(0x92b323e0), Next: 5_520_000}},
 				{3_985_894, 0, ID{Hash: checksumToBytes(0x92b323e0), Next: 5_520_000}},
 				{5_519_999, 0, ID{Hash: checksumToBytes(0x92b323e0), Next: 5_520_000}},
-				{5_520_000, 0, ID{Hash: checksumToBytes(0x8c9b1797), Next: 0}},
-				{5_520_001, 0, ID{Hash: checksumToBytes(0x8c9b1797), Next: 0}},
+				{5_520_000, 0, ID{Hash: checksumToBytes(0x8c9b1797), Next: 9_957_000}},
+				{5_520_001, 0, ID{Hash: checksumToBytes(0x8c9b1797), Next: 9_957_000}},
+				{9_956_999, 0, ID{Hash: checksumToBytes(0x8c9b1797), Next: 9_957_000}},
+				{9_957_000, 0, ID{Hash: checksumToBytes(0x3a6b00d7), Next: 0}},
+				{9_957_001, 0, ID{Hash: checksumToBytes(0x3a6b00d7), Next: 0}},
 			},
 		},
 		// MintMe test cases
 		{
 			"mintme",
 			params.MintMeChainConfig,
-			params.MintMeGenesisHash,
+			core.GenesisToBlock(params.DefaultMintMeGenesisBlock(), nil),
 			[]testcase{
 				{0, 0, ID{Hash: checksumToBytes(0x02bf4180), Next: 252500}},
 				{252500, 0, ID{Hash: checksumToBytes(0x50aed09f), Next: 0}},
@@ -214,6 +245,7 @@ func TestValidation(t *testing.T) {
 	// Config that has not timestamp enabled
 	legacyConfig := *params.MainnetChainConfig
 	legacyConfig.ShanghaiTime = nil
+	legacyConfig.CancunTime = nil
 
 	tests := []struct {
 		config ctypes.ChainConfigurator
@@ -286,14 +318,10 @@ func TestValidation(t *testing.T) {
 		// at some future block 88888888, for itself, but past block for local. Local is incompatible.
 		//
 		// This case detects non-upgraded nodes with majority hash power (typical Ropsten mess).
-		//
-		// TODO(karalabe): This testcase will fail once mainnet gets timestamped forks, make legacy chain config
 		{&legacyConfig, 88888888, 0, ID{Hash: checksumToBytes(0xf0afd0e3), Next: 88888888}, ErrLocalIncompatibleOrStale},
 
 		// Local is mainnet Byzantium. Remote is also in Byzantium, but announces Gopherium (non existing
 		// fork) at block 7279999, before Petersburg. Local is incompatible.
-		//
-		// TODO(karalabe): This testcase will fail once mainnet gets timestamped forks, make legacy chain config
 		{&legacyConfig, 7279999, 0, ID{Hash: checksumToBytes(0xa00bc324), Next: 7279999}, ErrLocalIncompatibleOrStale},
 
 		// ------------------------------------
@@ -370,34 +398,25 @@ func TestValidation(t *testing.T) {
 		// Local is mainnet currently in Shanghai only (so it's aware of Cancun), remote announces
 		// also Shanghai, but it's not yet aware of Cancun (e.g. non updated node before the fork).
 		// In this case we don't know if Cancun passed yet or not.
-		//
-		// TODO(karalabe): Enable this when Cancun is specced
-		// {params.MainnetChainConfig, 20000000, 1668000000, ID{Hash: checksumToBytes(0x71147644), Next: 0}, nil},
+		{params.MainnetChainConfig, 20000000, 1668000000, ID{Hash: checksumToBytes(0xdce96c2d), Next: 0}, nil},
 
 		// Local is mainnet currently in Shanghai only (so it's aware of Cancun), remote announces
 		// also Shanghai, and it's also aware of Cancun (e.g. updated node before the fork). We
 		// don't know if Cancun passed yet (will pass) or not.
-		//
-		// TODO(karalabe): Enable this when Cancun is specced and update next timestamp
-		// {params.MainnetChainConfig, 20000000, 1668000000, ID{Hash: checksumToBytes(0x71147644), Next: 1678000000}, nil},
+		{params.MainnetChainConfig, 20000000, 1668000000, ID{Hash: checksumToBytes(0xdce96c2d), Next: 1710338135}, nil},
 
 		// Local is mainnet currently in Shanghai only (so it's aware of Cancun), remote announces
 		// also Shanghai, and it's also aware of some random fork (e.g. misconfigured Cancun). As
 		// neither forks passed at neither nodes, they may mismatch, but we still connect for now.
-		//
-		// TODO(karalabe): Enable this when Cancun is specced
-		// {params.MainnetChainConfig, 20000000, 1668000000, ID{Hash: checksumToBytes(0x71147644), Next: math.MaxUint64}, nil},
+		{params.MainnetChainConfig, 20000000, 1668000000, ID{Hash: checksumToBytes(0xdce96c2d), Next: math.MaxUint64}, nil},
 
 		// Local is mainnet exactly on Cancun, remote announces Shanghai + knowledge about Cancun. Remote
 		// is simply out of sync, accept.
-		//
-		// TODO(karalabe): Enable this when Cancun is specced, update local head and time, next timestamp
-		// {params.MainnetChainConfig, 21000000, 1678000000, ID{Hash: checksumToBytes(0x71147644), Next: 1678000000}, nil},
+		{params.MainnetChainConfig, 21000000, 1710338135, ID{Hash: checksumToBytes(0xdce96c2d), Next: 1710338135}, nil},
 
 		// Local is mainnet Cancun, remote announces Shanghai + knowledge about Cancun. Remote
 		// is simply out of sync, accept.
-		// TODO(karalabe): Enable this when Cancun is specced, update local head and time, next timestamp
-		// {params.MainnetChainConfig, 21123456, 1678123456, ID{Hash: checksumToBytes(0x71147644), Next: 1678000000}, nil},
+		{params.MainnetChainConfig, 21123456, 1710338136, ID{Hash: checksumToBytes(0xdce96c2d), Next: 1710338135}, nil},
 
 		// Local is mainnet Prague, remote announces Shanghai + knowledge about Cancun. Remote
 		// is definitely out of sync. It may or may not need the Prague update, we don't know yet.
@@ -406,9 +425,7 @@ func TestValidation(t *testing.T) {
 		// {params.MainnetChainConfig, 0, 0, ID{Hash: checksumToBytes(0x3edd5b10), Next: 4370000}, nil},
 
 		// Local is mainnet Shanghai, remote announces Cancun. Local is out of sync, accept.
-		//
-		// TODO(karalabe): Enable this when Cancun is specced, update remote checksum
-		// {params.MainnetChainConfig, 21000000, 1678000000, ID{Hash: checksumToBytes(0x00000000), Next: 0}, nil},
+		{params.MainnetChainConfig, 21000000, 1700000000, ID{Hash: checksumToBytes(0x9f3d2254), Next: 0}, nil},
 
 		// Local is mainnet Shanghai, remote announces Cancun, but is not aware of Prague. Local
 		// out of sync. Local also knows about a future fork, but that is uncertain yet.
@@ -418,9 +435,7 @@ func TestValidation(t *testing.T) {
 
 		// Local is mainnet Cancun. remote announces Shanghai but is not aware of further forks.
 		// Remote needs software update.
-		//
-		// TODO(karalabe): Enable this when Cancun is specced, update local head and time
-		// {params.MainnetChainConfig, 21000000, 1678000000, ID{Hash: checksumToBytes(0x71147644), Next: 0}, ErrRemoteStale},
+		{params.MainnetChainConfig, 21000000, 1710338135, ID{Hash: checksumToBytes(0xdce96c2d), Next: 0}, ErrRemoteStale},
 
 		// Local is mainnet Shanghai, and isn't aware of more forks. Remote announces Shanghai +
 		// 0xffffffff. Local needs software update, reject.
@@ -428,27 +443,23 @@ func TestValidation(t *testing.T) {
 
 		// Local is mainnet Shanghai, and is aware of Cancun. Remote announces Cancun +
 		// 0xffffffff. Local needs software update, reject.
-		//
-		// TODO(karalabe): Enable this when Cancun is specced, update remote checksum
-		// {params.MainnetChainConfig, 20000000, 1668000000, ID{Hash: checksumToBytes(checksumUpdate(0x00000000, math.MaxUint64)), Next: 0}, ErrLocalIncompatibleOrStale},
+		{params.MainnetChainConfig, 20000000, 1668000000, ID{Hash: checksumToBytes(checksumUpdate(0x9f3d2254, math.MaxUint64)), Next: 0}, ErrLocalIncompatibleOrStale},
 
 		// Local is mainnet Shanghai, remote is random Shanghai.
 		{params.MainnetChainConfig, 20000000, 1681338455, ID{Hash: checksumToBytes(0x12345678), Next: 0}, ErrLocalIncompatibleOrStale},
 
-		// Local is mainnet Shanghai, far in the future. Remote announces Gopherium (non existing fork)
+		// Local is mainnet Cancun, far in the future. Remote announces Gopherium (non existing fork)
 		// at some future timestamp 8888888888, for itself, but past block for local. Local is incompatible.
 		//
 		// This case detects non-upgraded nodes with majority hash power (typical Ropsten mess).
-		{params.MainnetChainConfig, 88888888, 8888888888, ID{Hash: checksumToBytes(0xdce96c2d), Next: 8888888888}, ErrLocalIncompatibleOrStale},
+		{params.MainnetChainConfig, 88888888, 8888888888, ID{Hash: checksumToBytes(0x9f3d2254), Next: 8888888888}, ErrLocalIncompatibleOrStale},
 
 		// Local is mainnet Shanghai. Remote is also in Shanghai, but announces Gopherium (non existing
 		// fork) at timestamp 1668000000, before Cancun. Local is incompatible.
-		//
-		// TODO(karalabe): Enable this when Cancun is specced
-		// {params.MainnetChainConfig, 20999999, 1677999999, ID{Hash: checksumToBytes(0x71147644), Next: 1678000000}, ErrLocalIncompatibleOrStale},
+		{params.MainnetChainConfig, 20999999, 1699999999, ID{Hash: checksumToBytes(0x71147644), Next: 1700000000}, ErrLocalIncompatibleOrStale},
 	}
 	for i, tt := range tests {
-		filter := newFilter(tt.config, params.MainnetGenesisHash, func() (uint64, uint64) { return tt.head, tt.time })
+		filter := newFilter(tt.config, core.GenesisToBlock(params.DefaultGenesisBlock(), nil), func() (uint64, uint64) { return tt.head, tt.time })
 		if err := filter(tt.id); err != tt.err {
 			t.Errorf("test %d, head: %d: validation error mismatch: have %v, want %v\nConfig=%s", i, tt.head, err, tt.err, tt.config)
 		}
@@ -480,29 +491,46 @@ func TestEncoding(t *testing.T) {
 
 func TestGatherForks(t *testing.T) {
 	cases := []struct {
-		name   string
-		config ctypes.ChainConfigurator
-		wantNs []uint64
+		name       string
+		config     ctypes.ChainConfigurator
+		blockForks []uint64
+		timeForks  []uint64
 	}{
 		{
 			"classic",
 			params.ClassicChainConfig,
-			[]uint64{1150000, 2500000, 3000000, 5000000, 5900000, 8772000, 9573000, 10500839, 11_700_000, 13_189_133, 14_525_000},
+			[]uint64{1150000, 2500000, 3000000, 5000000, 5900000, 8772000, 9573000, 10500839, 11_700_000, 13_189_133, 14_525_000, 19_250_000},
+			[]uint64{},
 		},
 		{
 			"mainnet",
 			params.MainnetChainConfig,
 			[]uint64{1150000, 1920000, 2463000, 2675000, 4370000, 7280000, 9069000, 9200000, 12_244_000, 12_965_000, 13_773_000, 15050000},
+			[]uint64{1681338455 /* ShanghaiTime */, 1710338135 /* Cancun */},
+		},
+		{
+			"goerli",
+			params.GoerliChainConfig,
+			[]uint64{1_561_651, 4_460_644, 5_062_605},
+			[]uint64{1678832736 /* ShanghaiTime */, 1705473120 /* Cancun */},
+		},
+		{
+			"sepolia",
+			params.SepoliaChainConfig,
+			[]uint64{1735371 /* Merge NetSplit */},
+			[]uint64{1677557088 /* ShanghaiTime */, 1706655072 /* Cancun */},
 		},
 		{
 			"mordor",
 			params.MordorChainConfig,
-			[]uint64{301_243, 999_983, 2_520_000, 3_985_893, 5_520_000},
+			[]uint64{301_243, 999_983, 2_520_000, 3_985_893, 5_520_000, 9_957_000},
+			[]uint64{},
 		},
 		{
 			"mintme",
 			params.MintMeChainConfig,
 			[]uint64{252_500},
+			[]uint64{},
 		},
 	}
 	sliceContains := func(sl []uint64, u uint64) bool {
@@ -513,19 +541,24 @@ func TestGatherForks(t *testing.T) {
 		}
 		return false
 	}
+	slicesEquivalent := func(sl1, sl2 []uint64) bool {
+		if len(sl1) != len(sl2) {
+			return false
+		}
+		for _, s := range sl1 {
+			if !sliceContains(sl2, s) {
+				return false
+			}
+		}
+		return true
+	}
 	for _, c := range cases {
-		blockForks, _ := gatherForks(c.config)
-		if len(blockForks) != len(c.wantNs) {
-			for _, n := range c.wantNs {
-				if !sliceContains(blockForks, n) {
-					t.Errorf("config=%s missing wanted fork at block number: %d", c.name, n)
-				}
-			}
-			for _, n := range blockForks {
-				if !sliceContains(c.wantNs, n) {
-					t.Errorf("config=%s gathered unwanted fork at block number: %d", c.name, n)
-				}
-			}
+		blockForks, timeForks := gatherForks(c.config, 0)
+		if !slicesEquivalent(blockForks, c.blockForks) {
+			t.Errorf("config=%s block forks mismatch: have %v, want %v", c.name, blockForks, c.blockForks)
+		}
+		if !slicesEquivalent(timeForks, c.timeForks) {
+			t.Errorf("config=%s time forks mismatch: have %v, want %v", c.name, timeForks, c.timeForks)
 		}
 	}
 }
@@ -538,7 +571,7 @@ func TestGenerateSpecificationCases(t *testing.T) {
 	}
 	type testCaseJSON struct {
 		ChainConfig *coregeth.CoreGethChainConfig `json:"geth_chain_config"`
-		GenesisHash common.Hash                   `json:"genesis_hash"`
+		Genesis     *types.Block                  `json:"genesis_hash"`
 		Head        uint64                        `json:"head"`
 		ForkHash    common.Hash                   `json:"fork_hash"`
 		ForkNext    uint64                        `json:"fork_next"`
@@ -548,50 +581,35 @@ func TestGenerateSpecificationCases(t *testing.T) {
 	generatedCases := []*testCaseJSON{}
 
 	tests := []struct {
-		name        string
-		config      ctypes.ChainConfigurator
-		genesisHash common.Hash
+		name    string
+		config  ctypes.ChainConfigurator
+		genesis *types.Block
 	}{
 		{"Ethereum Classic Mainnet (ETC)",
 			params.ClassicChainConfig,
-			params.MainnetGenesisHash,
+			core.GenesisToBlock(params.DefaultClassicGenesisBlock(), nil),
 		},
 		{
 			"Mordor",
 			params.MordorChainConfig,
-			params.MordorGenesisHash,
-		},
-		{
-			"Morden",
-			&coregeth.CoreGethChainConfig{
-				Ethash:            &ctypes.EthashConfig{},
-				EIP2FBlock:        big.NewInt(494000),
-				EIP150Block:       big.NewInt(1783000),
-				EIP155Block:       big.NewInt(1915000),
-				ECIP1017FBlock:    big.NewInt(2000000),
-				ECIP1017EraRounds: big.NewInt(2000000),
-				DisposalBlock:     big.NewInt(2300000),
-				EIP198FBlock:      big.NewInt(4729274), // Atlantis
-				EIP1052FBlock:     big.NewInt(5000381), // Agharta
-			},
-			common.HexToHash("0cd786a2425d16f152c658316c423e6ce1181e15c3295826d7c9904cba9ce303"),
+			core.GenesisToBlock(params.DefaultMordorGenesisBlock(), nil),
 		},
 		{
 			"MintMe",
 			params.MintMeChainConfig,
-			params.MintMeGenesisHash,
+			core.GenesisToBlock(params.DefaultMintMeGenesisBlock(), nil),
 		},
 	}
 	for _, tt := range tests {
 		cs := []uint64{0}
-		blockForks, _ := gatherForks(tt.config)
+		blockForks, _ := gatherForks(tt.config, tt.genesis.Time())
 		for _, f := range blockForks {
 			cs = append(cs, f-1, f, f+1)
 		}
 		fmt.Printf("##### %s\n", tt.name)
 		fmt.Println()
-		fmt.Printf("- Genesis Hash: `0x%x`\n", tt.genesisHash)
-		forks, _ := gatherForks(tt.config)
+		fmt.Printf("- Genesis Hash: `0x%x`\n", tt.genesis.Hash())
+		forks, _ := gatherForks(tt.config, 441806400)
 		forksS := []string{}
 		for _, fi := range forks {
 			forksS = append(forksS, strconv.Itoa(int(fi)))
@@ -601,7 +619,7 @@ func TestGenerateSpecificationCases(t *testing.T) {
 		fmt.Println("| Head Block Number | `FORK_HASH` | `FORK_NEXT` | RLP Encoded (Hex) |")
 		fmt.Println("| --- | --- | --- | --- |")
 		for _, c := range cs {
-			id := NewID(tt.config, tt.genesisHash, c, 0)
+			id := NewID(tt.config, tt.genesis, c, 0)
 			isCanonical := false
 			for _, fi := range forks {
 				if c == fi {
@@ -622,7 +640,7 @@ func TestGenerateSpecificationCases(t *testing.T) {
 			}
 			generatedCases = append(generatedCases, &testCaseJSON{
 				ChainConfig: gethConfig,
-				GenesisHash: tt.genesisHash,
+				Genesis:     tt.genesis,
 				Head:        c,
 				ForkHash:    common.BytesToHash(id.Hash[:]),
 				ForkNext:    id.Next,
@@ -632,5 +650,57 @@ func TestGenerateSpecificationCases(t *testing.T) {
 		fmt.Println()
 		fmt.Println()
 		t.Log("generated cases", generatedCases)
+	}
+}
+
+// Tests that time-based forks which are active at genesis are not included in
+// forkid hash.
+func TestTimeBasedForkInGenesis(t *testing.T) {
+	var (
+		time       = uint64(1690475657)
+		genesis    = types.NewBlockWithHeader(&types.Header{Time: time})
+		forkidHash = checksumToBytes(crc32.ChecksumIEEE(genesis.Hash().Bytes()))
+		config     = func(shanghai, cancun uint64) ctypes.ChainConfigurator {
+			return &goethereum.ChainConfig{
+				ChainID:                       big.NewInt(1337),
+				HomesteadBlock:                big.NewInt(0),
+				DAOForkBlock:                  nil,
+				DAOForkSupport:                true,
+				EIP150Block:                   big.NewInt(0),
+				EIP155Block:                   big.NewInt(0),
+				EIP158Block:                   big.NewInt(0),
+				ByzantiumBlock:                big.NewInt(0),
+				ConstantinopleBlock:           big.NewInt(0),
+				PetersburgBlock:               big.NewInt(0),
+				IstanbulBlock:                 big.NewInt(0),
+				MuirGlacierBlock:              big.NewInt(0),
+				BerlinBlock:                   big.NewInt(0),
+				LondonBlock:                   big.NewInt(0),
+				TerminalTotalDifficulty:       big.NewInt(0),
+				TerminalTotalDifficultyPassed: true,
+				MergeNetsplitBlock:            big.NewInt(0),
+				ShanghaiTime:                  &shanghai,
+				CancunTime:                    &cancun,
+				Ethash:                        new(ctypes.EthashConfig),
+			}
+		}
+	)
+	tests := []struct {
+		config ctypes.ChainConfigurator
+		want   ID
+	}{
+		// Shanghai active before genesis, skip
+		{config(time-1, time+1), ID{Hash: forkidHash, Next: time + 1}},
+
+		// Shanghai active at genesis, skip
+		{config(time, time+1), ID{Hash: forkidHash, Next: time + 1}},
+
+		// Shanghai not active, skip
+		{config(time+1, time+2), ID{Hash: forkidHash, Next: time + 1}},
+	}
+	for _, tt := range tests {
+		if have := NewID(tt.config, genesis, 0, time); have != tt.want {
+			t.Fatalf("incorrect forkid hash: have %x, want %x", have, tt.want)
+		}
 	}
 }

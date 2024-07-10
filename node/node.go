@@ -281,8 +281,10 @@ func (n *Node) openEndpoints() error {
 	// start RPC endpoints
 	err := n.startRPC()
 	if err != nil {
+		log.Error("Failed to open RPC endpoints", "error", err)
 		n.stopRPC()
 		n.server.Stop()
+		return err
 	}
 	err = n.setupOpenRPC()
 	return err
@@ -529,15 +531,20 @@ func (n *Node) startRPC() error {
 		if err := server.setListenAddr(n.config.AuthAddr, port); err != nil {
 			return err
 		}
-		sharedConfig := rpcConfig
-		sharedConfig.jwtSecret = secret
-		if err := server.enableRPC(allAPIs, httpConfig{
+		sharedConfig := rpcEndpointConfig{
+			jwtSecret:              secret,
+			batchItemLimit:         engineAPIBatchItemLimit,
+			batchResponseSizeLimit: engineAPIBatchResponseSizeLimit,
+			httpBodyLimit:          engineAPIBodyLimit,
+		}
+		err := server.enableRPC(allAPIs, httpConfig{
 			CorsAllowedOrigins: DefaultAuthCors,
 			Vhosts:             n.config.AuthVirtualHosts,
 			Modules:            DefaultAuthModules,
 			prefix:             DefaultAuthPrefix,
 			rpcEndpointConfig:  sharedConfig,
-		}); err != nil {
+		})
+		if err != nil {
 			return err
 		}
 		servers = append(servers, server)
