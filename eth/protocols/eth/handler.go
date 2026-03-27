@@ -17,7 +17,9 @@
 package eth
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"math/big"
 	"time"
 
@@ -29,6 +31,7 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/ethereum/go-ethereum/params/types/ctypes"
+	"github.com/ethereum/go-ethereum/rlp"
 )
 
 const (
@@ -184,6 +187,60 @@ var eth68 = map[uint64]msgHandler{
 	PooledTransactionsMsg:         handlePooledTransactions,
 }
 
+// responseItemLimits defines the maximum number of items allowed in response
+// messages. This prevents memory amplification attacks (CVE-2026-26313) where
+// compact RLP-encoded items expand into large in-memory objects during decoding.
+type responseLimit struct {
+	maxItems int
+	wrapped  bool // true if the packet has a RequestId wrapper
+}
+
+var responseItemLimits = map[uint64]responseLimit{
+	BlockHeadersMsg:       {maxItems: maxHeadersServe, wrapped: true},
+	BlockBodiesMsg:        {maxItems: maxBodiesServe, wrapped: true},
+	ReceiptsMsg:           {maxItems: maxReceiptsServe, wrapped: true},
+	PooledTransactionsMsg: {maxItems: maxHeadersServe * 4, wrapped: true},
+	TransactionsMsg:       {maxItems: maxHeadersServe * 4, wrapped: false},
+}
+
+// checkResponseItems reads the message payload into a buffer, counts the number
+// of RLP items in the response list, and rejects messages that exceed maxItems.
+// The msg.Payload is replaced with a bytes.Reader so subsequent Decode calls work.
+func checkResponseItems(msg *p2p.Msg, limit responseLimit) error {
+	buf := make([]byte, msg.Size)
+	if _, err := io.ReadFull(msg.Payload, buf); err != nil {
+		return err
+	}
+	msg.Payload = bytes.NewReader(buf)
+
+	content, _, err := rlp.SplitList(buf)
+	if err != nil {
+		return err
+	}
+	var itemsContent []byte
+	if limit.wrapped {
+		// Skip RequestId (first element of the outer list)
+		_, _, rest, err := rlp.Split(content)
+		if err != nil {
+			return err
+		}
+		itemsContent, _, err = rlp.SplitList(rest)
+		if err != nil {
+			return err
+		}
+	} else {
+		itemsContent = content
+	}
+	count, err := rlp.CountValues(itemsContent)
+	if err != nil {
+		return err
+	}
+	if count > limit.maxItems {
+		return fmt.Errorf("%w: too many items in response: %d > %d", errDecode, count, limit.maxItems)
+	}
+	return nil
+}
+
 // handleMessage is invoked whenever an inbound message is received from a remote
 // peer. The remote connection is torn down upon returning any error.
 func handleMessage(backend Backend, peer *Peer) error {
@@ -196,6 +253,13 @@ func handleMessage(backend Backend, peer *Peer) error {
 		return fmt.Errorf("%w: %v > %v", errMsgTooLarge, msg.Size, maxMessageSize)
 	}
 	defer msg.Discard()
+
+	// Pre-decode item count validation to prevent memory amplification attacks.
+	if limit, ok := responseItemLimits[msg.Code]; ok {
+		if err := checkResponseItems(&msg, limit); err != nil {
+			return err
+		}
+	}
 
 	var handlers = eth68
 
