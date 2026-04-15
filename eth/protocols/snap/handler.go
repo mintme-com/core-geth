@@ -19,6 +19,7 @@ package snap
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -29,6 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/enr"
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/ethereum/go-ethereum/trie/trienode"
 )
@@ -126,6 +128,47 @@ func Handle(backend Backend, peer *Peer) error {
 	}
 }
 
+// snapResponseLimits defines the maximum number of items allowed in snap
+// response messages to prevent memory amplification attacks (CVE-2026-26313).
+var snapResponseLimits = map[uint64]int{
+	AccountRangeMsg:  maxCodeLookups * 10, // generous limit for account ranges
+	StorageRangesMsg: maxCodeLookups * 10,
+	ByteCodesMsg:     maxCodeLookups,
+	TrieNodesMsg:     maxTrieNodeLookups,
+}
+
+// checkSnapResponseItems reads the message payload into a buffer, counts items
+// in the first list field after the ID, and rejects messages exceeding maxItems.
+func checkSnapResponseItems(msg *p2p.Msg, maxItems int) error {
+	buf := make([]byte, msg.Size)
+	if _, err := io.ReadFull(msg.Payload, buf); err != nil {
+		return err
+	}
+	msg.Payload = bytes.NewReader(buf)
+
+	content, _, err := rlp.SplitList(buf)
+	if err != nil {
+		return err
+	}
+	// Skip ID (first element), then count items in the second element (the data list)
+	_, _, rest, err := rlp.Split(content)
+	if err != nil {
+		return err
+	}
+	itemsContent, _, err := rlp.SplitList(rest)
+	if err != nil {
+		return err
+	}
+	count, err := rlp.CountValues(itemsContent)
+	if err != nil {
+		return err
+	}
+	if count > maxItems {
+		return fmt.Errorf("%w: too many items in response: %d > %d", errDecode, count, maxItems)
+	}
+	return nil
+}
+
 // HandleMessage is invoked whenever an inbound message is received from a
 // remote peer on the `snap` protocol. The remote connection is torn down upon
 // returning any error.
@@ -139,6 +182,14 @@ func HandleMessage(backend Backend, peer *Peer) error {
 		return fmt.Errorf("%w: %v > %v", errMsgTooLarge, msg.Size, maxMessageSize)
 	}
 	defer msg.Discard()
+
+	// Pre-decode item count validation to prevent memory amplification attacks.
+	if maxItems, ok := snapResponseLimits[msg.Code]; ok {
+		if err := checkSnapResponseItems(&msg, maxItems); err != nil {
+			return err
+		}
+	}
+
 	start := time.Now()
 	// Track the amount of time it takes to serve the request and run the handler
 	if metrics.Enabled {
